@@ -49,9 +49,20 @@ def load() -> HazardNet:
     return _cached
 
 
-def train(save: bool = True, seed: int = 7) -> HazardNet:
-    train_x, train_y = generate(280, seed)
-    val_x, val_y = generate(80, seed + 1000)
+def train(
+    save: bool = True,
+    seed: int = 7,
+    train_x: np.ndarray | None = None,
+    train_y: np.ndarray | None = None,
+    val_x: np.ndarray | None = None,
+    val_y: np.ndarray | None = None,
+    path: Path | None = None,
+    epochs: int = 48,
+) -> HazardNet:
+    if train_x is None or train_y is None:
+        train_x, train_y = generate(280, seed)
+    if val_x is None or val_y is None:
+        val_x, val_y = generate(80, seed + 1000)
     mean = train_x.mean(axis=0)
     std = train_x.std(axis=0)
     std[std < 1e-6] = 1.0
@@ -66,7 +77,7 @@ def train(save: bool = True, seed: int = 7) -> HazardNet:
     b2 = np.zeros(outputs, np.float32)
     lr = 0.08
     batch = 64
-    for _epoch in range(48):
+    for _epoch in range(epochs):
         order = rng.permutation(len(x))
         for start in range(0, len(x), batch):
             idx = order[start : start + batch]
@@ -105,12 +116,15 @@ def train(save: bool = True, seed: int = 7) -> HazardNet:
         "confusion": matrix,
         "val_seed": np.array(seed + 1000, np.int32),
     }
+    out = Path(path) if path is not None else WEIGHTS
     if save:
-        WEIGHTS.parent.mkdir(parents=True, exist_ok=True)
-        np.savez(WEIGHTS, **weights)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        np.savez(out, **weights)
     global _cached
-    _cached = HazardNet(weights)
-    return _cached
+    # Only replace the cached onboard net when writing the synthetic mission weights.
+    if out.resolve() == WEIGHTS.resolve():
+        _cached = HazardNet(weights)
+    return HazardNet(weights)
 
 
 def write_held_out_metrics(seed: int = 7) -> list:
