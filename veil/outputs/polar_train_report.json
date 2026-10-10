@@ -1,0 +1,120 @@
+{
+  "samples": 4800,
+  "val_samples": 960,
+  "per_class": {
+    "none": 1200,
+    "rock": 1200,
+    "pit": 1200,
+    "artifact": 1200
+  },
+  "val_per_class": {
+    "none": 240,
+    "rock": 240,
+    "pit": 240,
+    "artifact": 240
+  },
+  "per_class_before_balance": {
+    "none": 3872,
+    "rock": 7945,
+    "pit": 7788,
+    "artifact": 1200
+  },
+  "val_accuracy": 0.5813,
+  "confusion": [
+    [
+      126,
+      56,
+      42,
+      16
+    ],
+    [
+      51,
+      111,
+      56,
+      22
+    ],
+    [
+      63,
+      57,
+      110,
+      10
+    ],
+    [
+      14,
+      11,
+      4,
+      211
+    ]
+  ],
+  "class_names": [
+    "none",
+    "rock",
+    "pit",
+    "artifact"
+  ],
+  "terrains_train": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    10,
+    11
+  ],
+  "terrains_held_out": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12
+  ],
+  "val_only_terrains": [
+    9,
+    12
+  ],
+  "holdout": "Terrains 9+12 fully held out; ~25% of other frames by path hash",
+  "train_frames": 266,
+  "val_frames": 166,
+  "label_rule": {
+    "source": "GroundTruth_RectifiedRangeMaps Pos*_org-XYZ.tif",
+    "point_channels": "(Z_depth, X, Y) mm in rectified camera frame",
+    "height": "signed distance to fitted ground plane (meters), plus local residual vs blur",
+    "rock": "local plane-residual > 0.025 m",
+    "pit": "local residual < -0.028 m OR plane height < -0.055 m (craters)",
+    "none": "|local| <= 0.01 m and |plane height| <= 0.022 m",
+    "artifact": "synthetic dark disk on tone-mapped image (sim-style)",
+    "features": "rectify \u2192 8-bit tone-map at native 1936x1216 \u2192 64x64 crop resized to 16x16 \u2192 same 262-d recipe as veil.dataset.features (u/v \u00f7 native size); train-time gain/bias"
+  },
+  "weights": "veil/outputs/hazard_net_polar.npz",
+  "onboard_weights": "veil/outputs/hazard_net.npz",
+  "onboard_note": "Keep veil/outputs/hazard_net.npz for the scripted mission / synthetic tests. Use hazard_net_polar.npz when evaluating PolarDB / lunar-analog imagery.",
+  "download_bytes": {
+    "GroundTruth_RectifiedRangeMaps.zip": 390081825,
+    "RadiometricCalibrationData.zip": 17048120,
+    "Terrain01_LargeOnly.zip": 748321473,
+    "Terrain02_1BigRock.zip": 933621853,
+    "Terrain03_MeanDistr.zip": 941721799,
+    "Terrain04_MeanDistr.zip": 945545789,
+    "Terrain05_MeanDistr.zip": 941358868,
+    "Terrain06_Smooth.zip": 947219814,
+    "Terrain07_LargeSmallRocksSide.zip": 961355614,
+    "Terrain08_1BigRock.zip": 949341629,
+    "Terrain09_MediumOnly.zip": 947887150,
+    "Terrain10_MediumOnly.zip": 939018454,
+    "Terrain11_FreshCrater.zip": 927427278,
+    "Terrain12_OldCrater.zip": 940739400,
+    "Terrain13_LHT.zip": 207199991,
+    "PolarDB_Readme.pdf": 1628374
+  },
+  "download_total_bytes": 11739517431
+}

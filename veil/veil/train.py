@@ -74,8 +74,19 @@ def _train_polar() -> None:
         val_x=val_x,
         val_y=val_y,
         path=POLAR_WEIGHTS,
-        epochs=64,
+        epochs=100,
+        weight_decay=1e-4,
+        lr=0.06,
     )
+    from veil.polar import POLAR_ROOT
+
+    download_sizes = {}
+    sizes_file = POLAR_ROOT / "download_sizes.txt"
+    if sizes_file.exists():
+        for line in sizes_file.read_text(encoding="utf-8").splitlines():
+            parts = line.split("\t")
+            if len(parts) == 2 and parts[0] != "TOTAL":
+                download_sizes[parts[1]] = int(parts[0])
     report = {
         "samples": int(len(train_x)),
         "val_samples": int(len(val_x)),
@@ -87,11 +98,15 @@ def _train_polar() -> None:
         "class_names": list(NAMES),
         "terrains_train": meta["train_terrains"],
         "terrains_held_out": meta["val_terrains"],
+        "val_only_terrains": meta.get("val_only_terrains"),
+        "holdout": meta.get("holdout"),
         "train_frames": len(meta["train_frames"]),
         "val_frames": len(meta["val_frames"]),
         "label_rule": meta["label_rule"],
-        "weights": str(POLAR_WEIGHTS),
-        "onboard_weights": str(WEIGHTS),
+        "download_bytes": download_sizes,
+        "download_total_bytes": int(sum(download_sizes.values())),
+        "weights": "veil/outputs/hazard_net_polar.npz",
+        "onboard_weights": "veil/outputs/hazard_net.npz",
         "onboard_note": (
             "Keep veil/outputs/hazard_net.npz for the scripted mission / synthetic tests. "
             "Use hazard_net_polar.npz when evaluating PolarDB / lunar-analog imagery."

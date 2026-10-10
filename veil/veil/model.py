@@ -58,6 +58,8 @@ def train(
     val_y: np.ndarray | None = None,
     path: Path | None = None,
     epochs: int = 48,
+    weight_decay: float = 0.0,
+    lr: float = 0.08,
 ) -> HazardNet:
     if train_x is None or train_y is None:
         train_x, train_y = generate(280, seed)
@@ -75,8 +77,9 @@ def train(
     b1 = np.zeros(HIDDEN, np.float32)
     w2 = rng.normal(0, np.sqrt(2 / HIDDEN), size=(HIDDEN, outputs)).astype(np.float32)
     b2 = np.zeros(outputs, np.float32)
-    lr = 0.08
     batch = 64
+    best = None
+    best_acc = -1.0
     for _epoch in range(epochs):
         order = rng.permutation(len(x))
         for start in range(0, len(x), batch):
@@ -94,11 +97,23 @@ def train(
             grad_b2 = grad_scores.sum(axis=0)
             grad_hidden = grad_scores @ w2.T
             grad_hidden[hidden <= 0] = 0
+            if weight_decay:
+                grad_w2 = grad_w2 + weight_decay * w2
+                grad_w1 = (xb.T @ grad_hidden) + weight_decay * w1
+            else:
+                grad_w1 = xb.T @ grad_hidden
             w2 -= lr * grad_w2.astype(np.float32)
             b2 -= lr * grad_b2.astype(np.float32)
-            w1 -= lr * (xb.T @ grad_hidden).astype(np.float32)
+            w1 -= lr * grad_w1.astype(np.float32)
             b1 -= lr * grad_hidden.sum(axis=0).astype(np.float32)
-        lr *= 0.96
+        lr *= 0.97
+        val_pred = _predict_many(w1, b1, w2, b2, vx)
+        acc = float((val_pred == val_y).mean())
+        if acc >= best_acc:
+            best_acc = acc
+            best = (w1.copy(), b1.copy(), w2.copy(), b2.copy())
+    if best is not None:
+        w1, b1, w2, b2 = best
     val_pred = _predict_many(w1, b1, w2, b2, vx)
     accuracy = float((val_pred == val_y).mean())
     matrix = np.zeros((outputs, outputs), np.int32)

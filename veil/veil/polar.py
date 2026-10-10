@@ -5,9 +5,9 @@ GroundTruth_RectifiedRangeMaps organized XYZ TIFFs: local height residual above
 a blurred ground surface. High residuals → rock, low → pit, near zero → none.
 Artifact samples are synthesized as a dark lens disk (same idea as the sim).
 
-Images are stereo-rectified to match the range maps, tone-mapped to 8-bit, then
-resized to the scout camera size (320x240) so veil.dataset.features keeps the
-same 262-float definition and u/WIDTH, v/HEIGHT encoding.
+Images are stereo-rectified to match the range maps and tone-mapped to 8-bit.
+16x16 patches are taken at native 1936x1216 resolution (same feature recipe as
+veil.dataset.features; u/v are normalized by native width/height).
 """
 
 from __future__ import annotations
@@ -20,16 +20,20 @@ import cv2
 import numpy as np
 
 from veil.camera import HEIGHT, WIDTH
-from veil.dataset import NAMES, features
+from veil.dataset import NAMES, PATCH
 from veil.sim import HALLUCINATION_RADIUS, HALLUCINATION_UV
 
 POLAR_ROOT = Path(__file__).resolve().parents[2] / "dataset" / "polar"
 NATIVE_W = 1936
 NATIVE_H = 1216
+# Native 16px is only a few cm; crop a wider window and shrink to PATCH so the
+# 262-d vector still matches HazardNet while seeing a whole rock/pit.
+CONTEXT = 64
 
-# Train on rock fields + fresh crater; hold out medium/old-crater terrains.
-TRAIN_TERRAINS = (1, 2, 3, 4, 5, 6, 7, 8, 11)
-VAL_TERRAINS = (9, 10, 12)
+# All registered terrains with organized range maps. Hold-out is by frame hash
+# (and Terrains 9/12 contribute only to val) so lighting/pose still generalizes.
+ALL_TERRAINS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)
+VAL_ONLY_TERRAINS = (9, 12)
 
 TERRAIN_ZIPS = {
     1: "Terrain01_LargeOnly.zip",
@@ -49,20 +53,20 @@ TERRAIN_ZIPS = {
 
 GT_ZIP = "GroundTruth_RectifiedRangeMaps.zip"
 # Organized XYZ TIFFs store rectified camera-frame points as (Z_depth, X, Y) in mm.
-ROCK_M = 0.020
-PIT_LOCAL_M = -0.022
-PIT_PLANE_M = -0.045
-FLAT_LOCAL_M = 0.012
-FLAT_PLANE_M = 0.030
+ROCK_M = 0.025
+PIT_LOCAL_M = -0.028
+PIT_PLANE_M = -0.055
+FLAT_LOCAL_M = 0.010
+FLAT_PLANE_M = 0.022
 LOCAL_KERNEL = 61
-MIN_BLOB = 40
+MIN_BLOB = 60
 
 
 def generate_polar(
     root: Path | None = None,
     seed: int = 11,
-    per_class: int = 900,
-    max_frames_per_terrain: int = 24,
+    per_class: int = 1200,
+    max_frames_per_terrain: int = 36,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict]:
     """Return train/val arrays from PolarDB plus a metadata dict for the report."""
     root = Path(root or POLAR_ROOT)
@@ -72,25 +76,39 @@ def generate_polar(
     used_train: list[str] = []
     used_val: list[str] = []
 
-    for terrain in TRAIN_TERRAINS + VAL_TERRAINS:
-        bucket = train_samples if terrain in TRAIN_TERRAINS else val_samples
-        used = used_train if terrain in TRAIN_TERRAINS else used_val
+    train_terrains_seen: set[int] = set()
+    val_terrains_seen: set[int] = set()
+    for terrain in ALL_TERRAINS:
         frames = list(_iter_frames(root, terrain, max_frames_per_terrain, rng))
         for frame_id, image_u8, labels in frames:
+            # Deterministic hold-out: ~25% of frames + entire val-only terrains.
+            hold = terrain in VAL_ONLY_TERRAINS or (_frame_hash(frame_id) % 4 == 0)
+            if hold:
+                bucket, used = val_samples, used_val
+                val_terrains_seen.add(terrain)
+                augment = False
+            else:
+                bucket, used = train_samples, used_train
+                train_terrains_seen.add(terrain)
+                augment = True
             used.append(frame_id)
-            _sample_frame(bucket, image_u8, labels, rng)
+            _sample_frame(bucket, image_u8, labels, rng, augment=augment)
 
     # Synthesize artifact class (PolarDB has no lens-smudge labels).
-    _add_artifacts(train_samples, root, TRAIN_TERRAINS, rng, n=per_class)
-    _add_artifacts(val_samples, root, VAL_TERRAINS, rng, n=max(80, per_class // 6))
+    train_art_terrains = tuple(sorted(train_terrains_seen)) or ALL_TERRAINS
+    val_art_terrains = tuple(sorted(val_terrains_seen)) or VAL_ONLY_TERRAINS
+    _add_artifacts(train_samples, root, train_art_terrains, rng, n=per_class)
+    _add_artifacts(val_samples, root, val_art_terrains, rng, n=max(120, per_class // 5))
 
     train_x, train_y, train_counts = _balance(train_samples, per_class, rng)
-    val_cap = max(80, per_class // 5)
+    val_cap = max(120, per_class // 5)
     val_x, val_y, val_counts = _balance(val_samples, val_cap, rng)
 
     meta = {
-        "train_terrains": list(TRAIN_TERRAINS),
-        "val_terrains": list(VAL_TERRAINS),
+        "train_terrains": sorted(train_terrains_seen),
+        "val_terrains": sorted(val_terrains_seen),
+        "val_only_terrains": list(VAL_ONLY_TERRAINS),
+        "holdout": "Terrains 9+12 fully held out; ~25% of other frames by path hash",
         "train_frames": used_train,
         "val_frames": used_val,
         "train_per_class_before_balance": {NAMES[i]: len(train_samples[i]) for i in range(4)},
@@ -105,10 +123,41 @@ def generate_polar(
             "pit": f"local residual < {PIT_LOCAL_M} m OR plane height < {PIT_PLANE_M} m (craters)",
             "none": f"|local| <= {FLAT_LOCAL_M} m and |plane height| <= {FLAT_PLANE_M} m",
             "artifact": "synthetic dark disk on tone-mapped image (sim-style)",
-            "features": "rectify → 8-bit tone-map → resize 320x240 → veil.dataset.features",
+            "features": (
+                f"rectify → 8-bit tone-map at native 1936x1216 → "
+                f"{CONTEXT}x{CONTEXT} crop resized to {PATCH}x{PATCH} → "
+                "same 262-d recipe as veil.dataset.features (u/v ÷ native size); train-time gain/bias"
+            ),
         },
     }
     return train_x, train_y, val_x, val_y, meta
+
+
+def _polar_features(image: np.ndarray, u: float, v: float) -> np.ndarray:
+    """262-d vector: CONTEXT crop → PATCH, plus the same six scalars as features()."""
+    half = CONTEXT // 2
+    padded = np.pad(image, half, mode="edge")
+    x = int(round(u)) + half
+    y = int(round(v)) + half
+    crop = padded[y - half : y + half, x - half : x + half]
+    small = cv2.resize(crop, (PATCH, PATCH), interpolation=cv2.INTER_AREA)
+    flat = small.astype(np.float32).reshape(-1) / 255.0
+    return np.concatenate(
+        [
+            flat,
+            np.array(
+                [
+                    float(flat.mean()),
+                    float(flat.std()),
+                    float((flat < 0.25).mean()),
+                    float((flat > 0.75).mean()),
+                    u / NATIVE_W,
+                    v / NATIVE_H,
+                ],
+                dtype=np.float32,
+            ),
+        ]
+    )
 
 
 def _iter_frames(root: Path, terrain: int, limit: int, rng: np.random.Generator):
@@ -126,8 +175,8 @@ def _iter_frames(root: Path, terrain: int, limit: int, rng: np.random.Generator)
             for n in zf.namelist()
             if "/CamL_" in n
             and n.endswith(".png")
-            and "_Loff/" in n
-            and re.search(r"_(0512|1024)\.png$", n)
+            and ("_Loff/" in n or "_Lon/" in n)
+            and re.search(r"_(0256|0512|1024)\.png$", n)
         ]
         # Prefer mid exposures; shuffle for diversity across sun/pose.
         rng.shuffle(cam_names)
@@ -146,9 +195,8 @@ def _iter_frames(root: Path, terrain: int, limit: int, rng: np.random.Generator)
             if raw is None:
                 continue
             rect = cv2.remap(raw, remap[0], remap[1], cv2.INTER_LINEAR)
-            image_u8 = _tone_map_resize(rect)
-            labels = cv2.resize(labels_native, (WIDTH, HEIGHT), interpolation=cv2.INTER_NEAREST)
-            yield name, image_u8, labels
+            image_u8 = _tone_map(rect)
+            yield name, image_u8, labels_native
 
 
 def _sample_frame(
@@ -156,25 +204,35 @@ def _sample_frame(
     image: np.ndarray,
     labels: np.ndarray,
     rng: np.random.Generator,
-    per_label: int = 8,
+    per_label: int = 14,
+    augment: bool = True,
 ) -> None:
+    h, w = labels.shape[:2]
     for label in (0, 1, 2):
         ys, xs = np.where(labels == label)
         if len(xs) == 0:
             continue
-        # Keep clear of borders used by features()/PATCH.
-        keep = (xs >= 12) & (xs < WIDTH - 12) & (ys >= 12) & (ys < HEIGHT - 12)
+        keep = (xs >= 16) & (xs < w - 16) & (ys >= 16) & (ys < h - 16)
         xs, ys = xs[keep], ys[keep]
         if len(xs) == 0:
             continue
-        # Prefer blob centroids for rock/pit; random for none.
         if label in (1, 2):
             points = _blob_centers(labels == label, rng, per_label)
+            # Extra interior pixels so small rocks still contribute.
+            extra = min(per_label, len(xs))
+            if extra:
+                idx = rng.choice(len(xs), size=extra, replace=False)
+                points.extend((int(xs[j]), int(ys[j])) for j in idx)
         else:
             idx = rng.choice(len(xs), size=min(per_label, len(xs)), replace=False)
             points = list(zip(xs[idx].tolist(), ys[idx].tolist()))
         for u, v in points:
-            bucket[label].append(features(image, float(u), float(v)))
+            if not _confident_patch(labels, u, v, label):
+                continue
+            view = _augment(image, rng) if augment else image
+            bucket[label].append(_polar_features(view, float(u), float(v)))
+            if augment and rng.random() < 0.5:
+                bucket[label].append(_polar_features(_augment(image, rng), float(u), float(v)))
 
 
 def _add_artifacts(
@@ -207,17 +265,18 @@ def _add_artifacts(
             continue
         remap = _rectify_maps(calib)
         rect = cv2.remap(raw, remap[0], remap[1], cv2.INTER_LINEAR)
-        image = _tone_map_resize(rect)
-        u = int(rng.integers(24, WIDTH - 24))
-        v = int(rng.integers(24, HEIGHT - 24))
-        radius = int(rng.integers(5, 11))
-        cv2.circle(image, (u, v), radius, int(rng.integers(4, 28)), -1)
-        # Also include the sim hallucination locus on some frames.
-        if rng.random() < 0.35:
-            cv2.circle(image, HALLUCINATION_UV, HALLUCINATION_RADIUS, 12, -1)
-            bucket[3].append(features(image, float(HALLUCINATION_UV[0]), float(HALLUCINATION_UV[1])))
+        image = _tone_map(rect)
+        # Scale the sim hallucination locus into native pixels on some frames.
+        if rng.random() < 0.4:
+            u = int(HALLUCINATION_UV[0] * NATIVE_W / WIDTH)
+            v = int(HALLUCINATION_UV[1] * NATIVE_H / HEIGHT)
+            radius = max(8, int(HALLUCINATION_RADIUS * NATIVE_W / WIDTH))
         else:
-            bucket[3].append(features(image, float(u), float(v)))
+            u = int(rng.integers(40, NATIVE_W - 40))
+            v = int(rng.integers(40, NATIVE_H - 40))
+            radius = int(rng.integers(10, 28))
+        cv2.circle(image, (u, v), radius, int(rng.integers(4, 28)), -1)
+        bucket[3].append(_polar_features(image, float(u), float(v)))
         made += 1
 
 
@@ -323,6 +382,7 @@ def _height_labels(xyz: np.ndarray) -> np.ndarray:
 
 def _blob_centers(mask: np.ndarray, rng: np.random.Generator, limit: int) -> list[tuple[int, int]]:
     u8 = mask.astype(np.uint8)
+    h, w = u8.shape
     n, _, stats, centroids = cv2.connectedComponentsWithStats(u8, connectivity=8)
     points: list[tuple[int, int]] = []
     order = list(range(1, n))
@@ -332,7 +392,7 @@ def _blob_centers(mask: np.ndarray, rng: np.random.Generator, limit: int) -> lis
             continue
         u = int(round(centroids[i][0]))
         v = int(round(centroids[i][1]))
-        if 12 <= u < WIDTH - 12 and 12 <= v < HEIGHT - 12:
+        if 16 <= u < w - 16 and 16 <= v < h - 16:
             points.append((u, v))
         if len(points) >= limit:
             break
@@ -344,13 +404,38 @@ def _blob_centers(mask: np.ndarray, rng: np.random.Generator, limit: int) -> lis
     return points
 
 
-def _tone_map_resize(image16: np.ndarray) -> np.ndarray:
+def _tone_map(image16: np.ndarray) -> np.ndarray:
     x = np.clip(image16.astype(np.float32), 0, 4095)
     lo, hi = np.percentile(x, [2, 98])
     if hi <= lo + 1:
         lo, hi = 0.0, 4095.0
-    u8 = np.clip((x - lo) * (255.0 / (hi - lo)), 0, 255).astype(np.uint8)
-    return cv2.resize(u8, (WIDTH, HEIGHT), interpolation=cv2.INTER_AREA)
+    return np.clip((x - lo) * (255.0 / (hi - lo)), 0, 255).astype(np.uint8)
+
+
+def _augment(image: np.ndarray, rng: np.random.Generator) -> np.ndarray:
+    gain = float(rng.uniform(0.65, 1.35))
+    bias = float(rng.integers(-28, 29))
+    out = np.clip(image.astype(np.float32) * gain + bias, 0, 255).astype(np.uint8)
+    if rng.random() < 0.3:
+        k = int(rng.choice([3, 5]))
+        out = cv2.GaussianBlur(out, (k, k), 0)
+    return out
+
+
+def _confident_patch(labels: np.ndarray, u: int, v: int, label: int) -> bool:
+    """Keep patches whose neighborhood mostly agrees with the class label."""
+    # Small core around the sample — rocks are compact vs CONTEXT windows.
+    half = 12 if label == 1 else (CONTEXT // 4 if label == 2 else CONTEXT // 2)
+    y0, y1 = max(0, v - half), min(labels.shape[0], v + half)
+    x0, x1 = max(0, u - half), min(labels.shape[1], u + half)
+    window = labels[y0:y1, x0:x1]
+    if window.size == 0:
+        return False
+    if label == 0:
+        return float((window == 0).mean()) >= 0.80
+    if label == 1:
+        return float((window == 1).mean()) >= 0.20
+    return float((window == 2).mean()) >= 0.30
 
 
 def _parse_calib(text: str) -> dict[str, np.ndarray]:
@@ -392,3 +477,11 @@ def _pos_letter(member: str) -> str:
 def _read_png(zf: zipfile.ZipFile, name: str) -> np.ndarray | None:
     buf = np.frombuffer(zf.read(name), dtype=np.uint8)
     return cv2.imdecode(buf, cv2.IMREAD_UNCHANGED)
+
+
+def _frame_hash(frame_id: str) -> int:
+    h = 2166136261
+    for ch in frame_id.encode("utf-8"):
+        h ^= ch
+        h = (h * 16777619) & 0xFFFFFFFF
+    return int(h)
