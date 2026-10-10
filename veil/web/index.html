@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>VEIL — Mission Control</title>
+  <style>
+    :root {
+      --ink: #f7f1e6;
+      --muted: #d9cbb6;
+      --glass: rgba(16, 18, 22, 0.78);
+      --line: rgba(247, 241, 230, 0.18);
+      --pit: #ff7a2f;
+      --rock: #2fd0c8;
+      --bad: #ff4d3a;
+      --ok: #d6ef6a;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; overflow: hidden; }
+    body {
+      color: var(--ink);
+      font: 16px/1.35 Bahnschrift, "Segoe UI", sans-serif;
+      background: #1b1914;
+    }
+    canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+    canvas.dragging { cursor: grabbing; }
+    .hud {
+      position: fixed;
+      z-index: 2;
+      background: var(--glass);
+      border: 1px solid var(--line);
+      backdrop-filter: blur(10px);
+      border-radius: 18px;
+    }
+    .top {
+      top: 18px; left: 18px; right: 18px;
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      align-items: stretch;
+      padding: 16px 18px;
+    }
+    .kicker { letter-spacing: 0.18em; font-size: 12px; color: var(--muted); }
+    h1 { margin: 4px 0 6px; font-size: 30px; line-height: 1.1; font-weight: 650; }
+    .story { margin: 0; color: var(--muted); max-width: 680px; }
+    .radio {
+      min-width: 190px;
+      border-radius: 14px;
+      padding: 12px 16px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      text-align: right;
+    }
+    .radio b { font-size: 22px; }
+    .radio span { color: var(--muted); font-size: 14px; }
+    .radio.up { background: #243018; color: var(--ok); }
+    .radio.down { background: #3a1814; color: #ffb1a6; }
+    .radio.down b, .radio.up b { color: inherit; }
+    .cam {
+      left: 18px; bottom: 18px; width: min(340px, 34vw);
+      padding: 12px;
+    }
+    .cam img { width: 100%; border-radius: 12px; display: block; background: #111; aspect-ratio: 4/3; object-fit: cover; }
+    .badge {
+      position: absolute; left: 22px; top: 22px;
+      background: var(--bad); color: white;
+      font-size: 11px; letter-spacing: 0.12em;
+      padding: 4px 7px; border-radius: 999px;
+    }
+    .cam p { margin: 8px 2px 0; color: var(--muted); font-size: 14px; }
+    .sheet {
+      right: 18px; top: 148px; bottom: 18px; width: min(320px, 36vw);
+      padding: 16px;
+      overflow: auto;
+    }
+    .sheet h2 { margin: 0 0 10px; font-size: 13px; letter-spacing: 0.14em; color: var(--muted); }
+    .hazard {
+      display: grid;
+      grid-template-columns: 42px 1fr;
+      gap: 10px;
+      padding: 10px 0;
+      border-top: 1px solid var(--line);
+    }
+    .mark {
+      width: 42px; height: 42px; border-radius: 12px;
+      display: grid; place-items: center; font-size: 12px; font-weight: 700;
+    }
+    .mark.pit { background: rgba(255, 122, 47, 0.2); color: var(--pit); }
+    .mark.rock { background: rgba(47, 208, 200, 0.18); color: var(--rock); }
+    .hazard b { display: block; font-size: 16px; }
+    .hazard span { color: var(--muted); font-size: 14px; }
+    .log { margin-top: 16px; }
+    .log li { list-style: none; padding: 8px 0; border-top: 1px solid var(--line); color: var(--muted); }
+    .log ul { margin: 0; padding: 0; }
+    .log time { display: block; color: var(--ink); font-size: 13px; }
+    .empty { color: var(--muted); }
+    .key {
+      position: fixed; z-index: 2;
+      left: 380px; bottom: 28px;
+      display: flex; gap: 16px;
+      color: #1b1914; font-size: 13px; font-weight: 650;
+    }
+    .dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; }
+    @media (max-width: 900px) {
+      .sheet { top: auto; bottom: 210px; left: 18px; right: 18px; width: auto; max-height: 34vh; }
+      .key { display: none; }
+      h1 { font-size: 22px; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="map"></canvas>
+  <header class="hud top">
+    <div>
+      <div class="kicker">DRAG THE LANDER OR THE SCOUT · DOUBLE-CLICK TO RESUME</div>
+      <h1 id="headline">Waiting for the scout.</h1>
+      <p id="story" class="story"></p>
+    </div>
+    <div id="link" class="radio"><b>—</b><span id="clock"></span></div>
+  </header>
+  <section class="hud cam">
+    <span class="badge">STAYS ON ROVER</span>
+    <img id="camera" alt="Rover camera. This image is not sent to Earth." />
+    <p id="camnote">This picture is not sent to Earth. The radio only carries the dots on the map.</p>
+  </section>
+  <aside class="hud sheet">
+    <h2>ON THE MAP</h2>
+    <div id="list"></div>
+    <p id="empty" class="empty">Nothing trusted yet. A shape must be seen from two places first.</p>
+    <div class="log">
+      <h2>DRIVE LOG</h2>
+      <ul id="log"></ul>
+    </div>
+  </aside>
+  <div class="key">
+    <span><i class="dot" style="background:#f7f1e6"></i>Scout</span>
+    <span><i class="dot" style="background:#ff4d3a"></i>Guessed while radio is down</span>
+    <span><i class="dot" style="background:#2fd0c8"></i>Rock</span>
+    <span><i class="dot" style="background:#ff7a2f"></i>Pit</span>
+    <span><i class="dot" style="background:rgba(247,241,230,0.85)"></i>Camera view</span>
+  </div>
+  <script>
+    const canvas = document.getElementById("map");
+    const ctx = canvas.getContext("2d");
+    const X0 = -3.1, X1 = 3.1, Y0 = -0.8, Y1 = 9.2;
+    const view = { zoom: 1, panX: 0, panY: 0 };
+    const drag = { kind: null, moved: false };
+    let latest = null;
+    let shownScout = null;
+
+    function fit() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.floor(innerWidth * dpr);
+      canvas.height = Math.floor(innerHeight * dpr);
+    }
+    addEventListener("resize", () => { fit(); });
+    fit();
+
+    function layout() {
+      const padX = canvas.width * 0.28;
+      const padY = canvas.height * 0.16;
+      const w = canvas.width - padX - 48;
+      const h = canvas.height - padY - 36;
+      const scale = Math.min(w / (X1 - X0), h / (Y1 - Y0));
+      const ox = padX + (w - scale * (X1 - X0)) / 2;
+      const oy = 36 + (h - scale * (Y1 - Y0)) / 2;
+      return { scale, ox, oy };
+    }
+
+    function project(x, y) {
+      const { scale, ox, oy } = layout();
+      const px = ox + (x - X0) * scale;
+      const py = canvas.height - (oy + (y - Y0) * scale);
+      const cx = canvas.width / 2, cy = canvas.height / 2;
+      return [cx + (px - cx) * view.zoom + view.panX, cy + (py - cy) * view.zoom + view.panY, scale * view.zoom];
+    }
+
+    function unproject(sx, sy) {
+      const { scale, ox, oy } = layout();
+      const cx = canvas.width / 2, cy = canvas.height / 2;
+      const px = (sx - view.panX - cx) / view.zoom + cx;
+      const py = (sy - view.panY - cy) / view.zoom + cy;
+      return [(px - ox) / scale + X0, (canvas.height - py - oy) / scale + Y0];
+    }
+
+    function pointer(ev) {
+      const rect = canvas.getBoundingClientRect();
+      return [
+        (ev.clientX - rect.left) * (canvas.width / rect.width),
+        (ev.clientY - rect.top) * (canvas.height / rect.height),
+      ];
+    }
+
+    function near(ax, ay, bx, by, r) {
+      return Math.hypot(ax - bx, ay - by) <= r;
+    }
+
+    function postMove(body) {
+      fetch("/api/move", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    }
+
+    function groundHit(u, v, scout, yaw) {
+      const xCam = (u - 160) / 300;
+      const yCam = (v - 120) / 300;
+      const pitch = 18 * Math.PI / 180;
+      const cp = Math.cos(pitch), sp = Math.sin(pitch);
+      const forward = [Math.sin(yaw), Math.cos(yaw), 0];
+      const right = [Math.cos(yaw), -Math.sin(yaw), 0];
+      const camForward = [cp * forward[0], cp * forward[1], -sp];
+      const camDown = [-sp * forward[0], -sp * forward[1], -cp];
+      const dir = [
+        xCam * right[0] + yCam * camDown[0] + camForward[0],
+        xCam * right[1] + yCam * camDown[1] + camForward[1],
+        yCam * camDown[2] + camForward[2],
+      ];
+      if (dir[2] >= -1e-6) return null;
+      const t = -0.55 / dir[2];
+      if (t <= 0) return null;
+      return [scout.x + t * dir[0], scout.y + t * dir[1]];
+    }
+
+    function viewFootprint(scout, yaw) {
+      const left = [];
+      const right = [];
+      for (let v = 235; v >= 28; v -= 12) {
+        const a = groundHit(2, v, scout, yaw);
+        const b = groundHit(317, v, scout, yaw);
+        if (!a || !b) break;
+        const reach = Math.max(Math.hypot(a[0] - scout.x, a[1] - scout.y), Math.hypot(b[0] - scout.x, b[1] - scout.y));
+        if (reach > 9) break;
+        left.push(a);
+        right.push(b);
+      }
+      if (left.length < 2) return [];
+      return left.concat(right.reverse());
+    }
+
+    function inside(point, polygon) {
+      let hit = false;
+      for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+        const yi = polygon[i][1], yj = polygon[j][1];
+        const xi = polygon[i][0], xj = polygon[j][0];
+        if ((yi > point[1]) !== (yj > point[1]) && point[0] < ((xj - xi) * (point[1] - yi)) / (yj - yi) + xi) hit = !hit;
+      }
+      return hit;
+    }
+
+    function explain(state) {
+      const dark = state.link === "blackout";
+      if (state.phase === "Survey") return ["Driving out from the lander.", "The scout checks each shape twice. Only then does a 20-byte note leave the rover."];
+      if (state.phase === "Blackout" && state.sim_t < 20) return ["The crater is blocking the radio.", "The scout keeps moving. The red mark is a guess, and the hazard rings widen until a message gets through."];
+      if (state.phase === "Burst") return ["The radio is open.", "Saved notes come across a few at a time. Pits closer to the path go first."];
+      if (dark) return ["Parked, and the radio dropped again.", "The hazards stay. Their rings grow until the next message."];
+      return ["Parked. This is the map Mission Control holds.", "The rocks and pits arrived. The spot stuck on the camera did not."];
+    }
+
+    function draw(state, mapOnly) {
+      const lander = state.lander || { x: 0, y: 0 };
+      const hazards = state.hazards || [];
+      if (!mapOnly) {
+      const dark = state.link === "blackout";
+      const link = document.getElementById("link");
+      link.className = "radio " + (dark ? "down" : "up");
+      link.querySelector("b").textContent = dark ? "Radio down" : "Radio up";
+      document.getElementById("clock").textContent = Number(state.sim_t || 0).toFixed(0) + " seconds";
+      const [headline, story] = explain(state);
+      document.getElementById("headline").textContent = headline;
+      document.getElementById("story").textContent = story;
+      const cam = document.getElementById("camera");
+      if (state.camera_id && cam.dataset.t !== state.camera_id) {
+        cam.dataset.t = state.camera_id;
+        cam.src = "/camera.jpg?" + state.camera_id;
+      }
+      const eye = drag.kind === "scout" && drag.pos ? drag.pos : (shownScout || state.scout);
+      const note = document.getElementById("camnote");
+      if (note && eye) {
+        const aim = groundHit(160, 120, eye, 0);
+        const ahead = aim ? Math.hypot(aim[0] - eye.x, aim[1] - eye.y) : 0;
+        const trained = state.stats && state.stats.model_accuracy
+          ? " Onboard network, " + Math.round(state.stats.model_accuracy * 100) + "% on generated views."
+          : "";
+        note.textContent = "Not a live feed to Earth. The crosshair meets the ground " + ahead.toFixed(1) + " m in front of the scout. Orange is a pit, teal is a rock." + trained;
+      }
+      document.getElementById("empty").style.display = hazards.length ? "none" : "block";
+      document.getElementById("list").innerHTML = hazards.map((h) => {
+        const dx = h.x - lander.x;
+        const dy = h.y - lander.y;
+        const side = dx > 0.15 ? dx.toFixed(1) + " m right" : dx < -0.15 ? Math.abs(dx).toFixed(1) + " m left" : "on the path";
+        return `
+        <div class="hazard">
+          <div class="mark ${h.cls}">${h.cls === "pit" ? "PIT" : "ROCK"}</div>
+          <div>
+            <b>${Math.abs(dy).toFixed(1)} m from lander</b>
+            <span>${side} · off by up to ${h.sigma.toFixed(2)} m · ${h.age_s.toFixed(0)}s old</span>
+          </div>
+        </div>`;
+      }).join("");
+      document.getElementById("log").innerHTML = (state.events || []).slice().reverse().slice(0, 5).map((event) =>
+        `<li><time>${event.t.toFixed(0)}s</time>${event.text}</li>`
+      ).join("");
+      }
+
+      const sky = ctx.createLinearGradient(0, 0, 0, canvas.height);
+      sky.addColorStop(0, "#14181f");
+      sky.addColorStop(0.22, "#243044");
+      sky.addColorStop(0.45, "#8d7356");
+      sky.addColorStop(1, "#cbb892");
+      ctx.fillStyle = sky;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.strokeStyle = "rgba(247,241,230,0.35)";
+      ctx.fillStyle = "#f7f1e6";
+      ctx.lineWidth = 1.5 * (canvas.width / 1400);
+      ctx.font = `${14 * (canvas.width / 1400)}px Bahnschrift, Segoe UI`;
+      for (let y = 0; y <= 8; y++) {
+        const a = project(-3.1, y), b = project(3.1, y);
+        ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+        ctx.fillText(y + " m", b[0] + 8, a[1] + 4);
+      }
+
+      const origin = project(lander.x, lander.y);
+      ctx.fillStyle = "#f7f1e6";
+      ctx.beginPath();
+      ctx.moveTo(origin[0], origin[1] - 14);
+      ctx.lineTo(origin[0] + 11, origin[1] + 10);
+      ctx.lineTo(origin[0] - 11, origin[1] + 10);
+      ctx.fill();
+      ctx.fillText("lander", origin[0] + 16, origin[1] + 4);
+
+      if (!draw.trail) draw.trail = [];
+      if (state.scout && !state.scout.predicted) {
+        const last = draw.trail[draw.trail.length - 1];
+        if (!last || Math.hypot(last.x - state.scout.x, last.y - state.scout.y) > 0.08) draw.trail.push({ x: state.scout.x, y: state.scout.y });
+      }
+      ctx.strokeStyle = "rgba(247,241,230,0.9)";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      draw.trail.forEach((point, index) => {
+        const p = project(point.x, point.y);
+        if (index === 0) ctx.moveTo(p[0], p[1]); else ctx.lineTo(p[0], p[1]);
+      });
+      ctx.stroke();
+
+      const scout = drag.kind === "scout" && drag.pos ? drag.pos : (state.camera_pose || shownScout || state.scout);
+      let footprint = [];
+      if (scout) {
+        draw.yaw = 0;
+        footprint = drag.kind === "scout"
+          ? viewFootprint(scout, 0)
+          : (state.view || []).map((point) => [point.x, point.y]);
+        if (!footprint.length) footprint = viewFootprint(scout, 0);
+        if (footprint.length) {
+          ctx.beginPath();
+          footprint.forEach((point, index) => {
+            const p = project(point[0], point[1]);
+            if (index === 0) ctx.moveTo(p[0], p[1]);
+            else ctx.lineTo(p[0], p[1]);
+          });
+          ctx.closePath();
+          ctx.fillStyle = "rgba(247, 241, 230, 0.28)";
+          ctx.fill();
+          ctx.strokeStyle = "rgba(247, 241, 230, 0.95)";
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          const seam = footprint.length / 2;
+          const aim = [
+            (footprint[seam - 1][0] + footprint[seam][0]) / 2,
+            (footprint[seam - 1][1] + footprint[seam][1]) / 2,
+          ];
+          const from = project(scout.x, scout.y);
+          const to = project(aim[0], aim[1]);
+          ctx.beginPath();
+          ctx.moveTo(from[0], from[1]);
+          ctx.lineTo(to[0], to[1]);
+          ctx.stroke();
+          const look = groundHit(160, 120, scout, 0);
+          if (look) {
+            const hit = project(look[0], look[1]);
+            ctx.strokeStyle = "#fff6e8";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(hit[0], hit[1], 7, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.fillStyle = "#1b1914";
+            ctx.fillText("crosshair", hit[0] + 10, hit[1] - 8);
+          }
+          ctx.fillStyle = "#1b1914";
+          ctx.fillText("camera", to[0] + 8, to[1]);
+        }
+      }
+      if (scout) {
+        const s = project(scout.x, scout.y);
+        ctx.fillStyle = scout.predicted ? "#ff4d3a" : "#f7f1e6";
+        ctx.beginPath();
+        ctx.arc(s[0], s[1], 11, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillText(scout.manual ? "scout (you)" : scout.predicted ? "guess" : "scout", s[0] + 14, s[1] - 10);
+      }
+
+      hazards.forEach((h) => {
+        const p = project(h.x, h.y);
+        const scale = p[2];
+        const seen = footprint.length && inside([h.x, h.y], footprint);
+        const color = h.cls === "pit" ? "#ff7a2f" : "#2fd0c8";
+        ctx.fillStyle = color;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 3;
+        if (h.cls === "pit") {
+          ctx.beginPath();
+          ctx.arc(p[0], p[1], Math.max(8, h.radius * scale), 0, Math.PI * 2);
+          ctx.stroke();
+        } else {
+          ctx.save();
+          ctx.translate(p[0], p[1]);
+          ctx.rotate(Math.PI / 4);
+          ctx.fillRect(-7, -7, 14, 14);
+          ctx.restore();
+        }
+        ctx.fillStyle = "#1b1914";
+        ctx.fillText((h.cls === "pit" ? "pit" : "rock") + (seen ? " · in camera" : ""), p[0] + 14, p[1] - 8);
+      });
+    }
+
+    async function tick() {
+      try {
+        const previousLander = drag.kind === "lander" && latest ? latest.lander : null;
+        latest = await (await fetch("/api/state", { cache: "no-store" })).json();
+        if (previousLander) latest.lander = previousLander;
+        if (drag.kind !== "lander" && drag.kind !== "scout") draw(latest);
+        if (drag.kind !== "scout" && latest.scout) {
+          if (!shownScout) shownScout = { ...latest.scout };
+          else {
+            shownScout.predicted = latest.scout.predicted;
+            shownScout.manual = latest.scout.manual;
+          }
+        }
+      } catch (err) {
+        document.getElementById("headline").textContent = "Mission Control is not connected.";
+      }
+    }
+
+    function frame() {
+      if (latest && latest.scout && drag.kind !== "scout" && shownScout && !latest.manual) {
+        shownScout.x += (latest.scout.x - shownScout.x) * 0.18;
+        shownScout.y += (latest.scout.y - shownScout.y) * 0.18;
+      }
+      if (latest && drag.kind !== "lander" && drag.kind !== "scout") draw(latest, true);
+      requestAnimationFrame(frame);
+    }
+
+    canvas.addEventListener("pointerdown", (ev) => {
+      if (!latest) return;
+      const [x, y] = pointer(ev);
+      const lander = latest.lander || { x: 0, y: 0 };
+      const scout = shownScout || latest.scout;
+      const lp = project(lander.x, lander.y);
+      const sp = scout ? project(scout.x, scout.y) : null;
+      drag.moved = false;
+      drag.last = [x, y];
+      if (near(x, y, lp[0], lp[1], 28)) drag.kind = "lander";
+      else if (sp && near(x, y, sp[0], sp[1], 28)) drag.kind = "scout";
+      else return;
+      canvas.classList.add("dragging");
+      try { canvas.setPointerCapture(ev.pointerId); } catch (err) { /* synthetic events */ }
+    });
+
+    canvas.addEventListener("pointermove", (ev) => {
+      if (!drag.kind) return;
+      const [x, y] = pointer(ev);
+      drag.moved = true;
+      const [wx, wy] = unproject(x, y);
+      drag.pos = { x: wx, y: wy, predicted: false, manual: drag.kind === "scout" };
+      if (drag.kind === "scout") shownScout = drag.pos;
+      if (drag.kind === "lander") latest.lander = { x: wx, y: wy };
+      draw(latest, true);
+    });
+
+    canvas.addEventListener("pointerup", () => {
+      if (drag.kind === "lander" && drag.pos) postMove({ lander: [drag.pos.x, drag.pos.y] });
+      if (drag.kind === "scout" && drag.pos) postMove({ scout: [drag.pos.x, drag.pos.y] });
+      drag.kind = null;
+      drag.pos = null;
+      canvas.classList.remove("dragging");
+    });
+
+    canvas.addEventListener("dblclick", () => {
+      postMove({ resume: true });
+      shownScout = null;
+    });
+
+    canvas.addEventListener("wheel", (ev) => {
+      ev.preventDefault();
+    }, { passive: false });
+
+    tick();
+    setInterval(tick, 250);
+    requestAnimationFrame(frame);
+  </script>
+</body>
+</html>

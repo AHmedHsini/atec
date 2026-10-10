@@ -1,0 +1,22 @@
+VEIL acceptance summary
+short passed: True  long passed: True
+long hazards: 4/4 false: 0
+long rejected inconsistent: 1 expired: 0
+long mean error m: 0.039 max error m: 0.085
+long bytes sent: 3060 naive json: 23798 float32 all detections: 9020 float32 confirmed: 80
+long hazard bytes: 80 pose bytes: 880 heartbeat bytes: 520 retransmission bytes: 1580
+long bytes per delivered hazard: 20.0 wasted during blackout: 0
+long fps: 816.2 model accuracy: 0.9
+failed scenarios: none
+loss sweep passed: True (30% min hazards >= 4, latency varies: True)
+loss  mean  min  receipt_median_s  receipt_p95_s  retx_per_hazard  hazard_B  pose_B  retx_B  B_per_hazard  informational
+0.1  4.0  4  0.0  0.005  0.2  80.0  720.0  326.0  20.0  False
+0.3  4.0  4  0.0  0.2  1.525  80.0  720.0  1176.0  20.0  False
+0.5  4.0  4  0.05  0.31  2.5  80.0  720.0  2670.0  20.0  True
+0.7  3.9  3  0.2  0.7  6.025  80.0  718.0  4698.0  20.7  True
+0.9  3.5  2  0.4  1.03  10.45  80.0  690.0  6358.0  24.7  True
+recovery loss 0.3 blackout [0.5, 6.0] first_median_s 0.0 all_median_s 0.1 delivered_min 4
+stress lost_hazards 4 delivered 0 wasted_blackout_bytes 0 limit_s 8.0
+source png hazards 4 false 0 mean_m 0.033 sim mean_m 0.033 mp4 hazards 4 mp4 mean_m 0.035 png_log_match False mp4_log_match False
+processes hazards 4/4 false 0 rejected 1 passed True
+process packet logs identical at loss 0: True packets 28

@@ -1,0 +1,25 @@
+{
+  "fps": 303.8,
+  "detections": 461,
+  "hazards_delivered": 4,
+  "hazards_expected": 4,
+  "false_hazards_delivered": 0,
+  "withheld_inconsistent_tracks": 1,
+  "mean_error_m": 0.033,
+  "max_error_m": 0.094,
+  "packet_bytes": 20,
+  "bytes_sent": 860,
+  "naive_json_bytes": 24373,
+  "packets_sent": 43,
+  "packets_delivered": 28,
+  "packets_dropped": 15,
+  "loss": 0.3,
+  "model_samples": 1272,
+  "model_val_accuracy": 0.9,
+  "blackout_s": [
+    0.5,
+    6.0
+  ],
+  "budget_bytes": 80,
+  "passed": true
+}

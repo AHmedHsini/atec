@@ -1,0 +1,15 @@
+{
+  "png_hazards": 4,
+  "png_false": 0,
+  "png_mean_error_m": 0.033,
+  "sim_hazards": 4,
+  "sim_false": 0,
+  "sim_mean_error_m": 0.033,
+  "mp4_hazards": 4,
+  "mp4_false": 0,
+  "mp4_mean_error_m": 0.035,
+  "png_matches_sim_packet_log": false,
+  "mp4_matches_sim_packet_log": false,
+  "png_pixels_match_sim": true,
+  "note": "PNG bytes match the simulator exactly, so a packet-log mismatch at 30% loss is ack timing, not the picture. The mp4v file is lossy and can move a fix."
+}

@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>C.R.A.T.E.R. Mission Control</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="top">
+    <div>
+      <p class="eyebrow">ATEC'26 · Project C.R.A.T.E.R.</p>
+      <h1>MISSION CONTROL</h1>
+      <p class="flow">Perception → Telemetry → Dashboard</p>
+    </div>
+    <div>
+      <p class="eyebrow">Mission time</p>
+      <p class="clock" id="clock">T+00:00</p>
+    </div>
+  </header>
+  <main class="layout">
+    <section class="panel">
+      <div class="stats">
+        <div><span>Link</span><strong id="link">—</strong></div>
+        <div><span>Packet</span><strong id="bytes">—</strong></div>
+        <div><span>Perception</span><strong id="fps">—</strong></div>
+        <div><span>Fix error</span><strong id="error">—</strong></div>
+      </div>
+      <div class="banner" id="banner">Blackout. Fixes on the map are aging.</div>
+      <canvas id="map" width="760" height="640"></canvas>
+      <div class="legend">
+        <span><i class="swatch rock"></i>Rock</span>
+        <span><i class="swatch crater"></i>Crater</span>
+        <span><i class="swatch ice"></i>Ice</span>
+        <span>Circle radius is uncertainty</span>
+      </div>
+    </section>
+    <section class="panel">
+      <p class="chapter" id="chapter">Descent</p>
+      <ol class="story" id="story"></ol>
+    </section>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>

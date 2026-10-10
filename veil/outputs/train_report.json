@@ -1,0 +1,29 @@
+{
+  "samples": 1272,
+  "per_class": {
+    "none": 318,
+    "rock": 318,
+    "pit": 318,
+    "artifact": 318
+  },
+  "val_accuracy": 0.9,
+  "weights": "C:\\Users\\hsini\\OneDrive\\Bureau\\ATEC\\veil\\outputs\\hazard_net.npz",
+  "flight_hazards": {
+    "rock-a": {
+      "shown": 23,
+      "named": 23
+    },
+    "pit-a": {
+      "shown": 43,
+      "named": 43
+    },
+    "rock-b": {
+      "shown": 43,
+      "named": 43
+    },
+    "pit-b": {
+      "shown": 60,
+      "named": 60
+    }
+  }
+}
