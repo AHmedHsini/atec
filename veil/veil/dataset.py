@@ -18,7 +18,14 @@ PATCH = 16
 NAMES = ("none", "rock", "pit", "artifact")
 
 
-def features(image: np.ndarray, u: float, v: float) -> np.ndarray:
+def features(
+    image: np.ndarray,
+    u: float,
+    v: float,
+    width: int = WIDTH,
+    height: int = HEIGHT,
+) -> np.ndarray:
+    """262-d patch vector. width/height only scale the u,v position scalars."""
     half = PATCH // 2
     padded = np.pad(image, half, mode="edge")
     x = int(round(u)) + half
@@ -34,8 +41,8 @@ def features(image: np.ndarray, u: float, v: float) -> np.ndarray:
                     float(flat.std()),
                     float((flat < 0.25).mean()),
                     float((flat > 0.75).mean()),
-                    u / WIDTH,
-                    v / HEIGHT,
+                    u / width,
+                    v / height,
                 ],
                 dtype=np.float32,
             ),

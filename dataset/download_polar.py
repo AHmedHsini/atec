@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 BASE = "https://ti.arc.nasa.gov/dataset/IRG_PolarDB/"
@@ -27,14 +29,33 @@ FILES = [
 OUT = Path(__file__).resolve().parent / "polar"
 
 
+def _curl() -> str:
+    for name in ("curl", "curl.exe"):
+        path = shutil.which(name)
+        if path:
+            return path
+    raise FileNotFoundError("curl not found on PATH")
+
+
 def main() -> None:
+    curl = _curl()
     OUT.mkdir(parents=True, exist_ok=True)
-    for name in FILES:
+    names = sys.argv[1:] or FILES
+    for name in names:
+        if name not in FILES and not name.startswith("PolarDB"):
+            # allow bare filenames that match the known list
+            matches = [f for f in FILES if Path(f).name == name or f.endswith(name)]
+            if len(matches) != 1:
+                raise SystemExit(f"unknown file: {name}")
+            name = matches[0]
         dest = OUT / Path(name).name
+        if dest.exists() and dest.stat().st_size > 0:
+            print(f"SKIP {dest.name} ({dest.stat().st_size} bytes)", flush=True)
+            continue
         print(f"GET {name} -> {dest}", flush=True)
         subprocess.run(
             [
-                "curl.exe",
+                curl,
                 "-L",
                 "--fail",
                 "--retry",
