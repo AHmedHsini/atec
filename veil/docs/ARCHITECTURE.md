@@ -18,7 +18,9 @@ The JPEG preview is drawn on the scout and shown by the dashboard. It is not a p
 
 `python run_mission.py` starts onboard, radio, and ground as three operating-system processes. The parent serves the dashboard and stops the children on Ctrl-C. Sockets are UDP on 127.0.0.1. The radio process applies loss. The onboard process holds packets while the blackout window says the link is down. `run(..., processes=False)` and `--in-process` keep the fast single-process path used by most tests. One acceptance scenario uses the three processes.
 
-Perception reads a `FrameSource`. `SimFrameSource` paints the drive. `VideoFrameSource` reads a PNG directory plus `poses.csv`, or an mp4 beside `{stem}_poses.csv`. CSV columns are `frame,t_s,x_m,y_m,yaw_rad`. `python -m veil.record --out <dir>` writes that recording.
+Perception reads a `FrameSource`. `SimFrameSource` paints the drive. `VideoFrameSource` reads a PNG directory or an mp4. If `poses.csv` or `{stem}_poses.csv` is missing, the scout assumes constant forward speed and the report says `pose source: assumed constant velocity`. `camera.json` can override mast height, pitch, and intrinsics. A frame of another size is scaled onto the 320×240 flight image and the intrinsics are scaled with it.
+
+Blob radius uses pinhole depth along the optical axis: `radius_m = depth_cam * radius_px / fx`. The older flat-range formula `distance * radius_px / fx` is compared in `python -m veil.validate_geometry`. The flight path keeps the depth form when that comparison is smaller or equal.
 
 | Piece | File | Owns |
 | --- | --- | --- |

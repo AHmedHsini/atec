@@ -10,15 +10,30 @@ from pathlib import Path
 
 
 def git_revision(root: Path) -> str | None:
-    try:
-        return subprocess.check_output(
-            ["git", "rev-parse", "--short", "HEAD"],
-            cwd=root,
-            stderr=subprocess.DEVNULL,
-            text=True,
-        ).strip()
-    except (OSError, subprocess.CalledProcessError):
-        return None
+    cursor = root.resolve()
+    for _ in range(5):
+        git_dir = cursor / ".git"
+        if git_dir.exists():
+            try:
+                return subprocess.check_output(
+                    ["git", "rev-parse", "--short", "HEAD"],
+                    cwd=cursor,
+                    stderr=subprocess.DEVNULL,
+                    text=True,
+                ).strip()
+            except (OSError, subprocess.CalledProcessError):
+                head = git_dir / "HEAD"
+                if head.is_file():
+                    text = head.read_text(encoding="utf-8").strip()
+                    if text.startswith("ref:"):
+                        ref = cursor / ".git" / text.split(" ", 1)[1].strip()
+                        if ref.is_file():
+                            return ref.read_text(encoding="utf-8").strip()[:12]
+                    return text[:12]
+        if cursor.parent == cursor:
+            break
+        cursor = cursor.parent
+    return None
 
 
 def stamp(report: dict, scenario: str, seed: int, frames: int, dt: float, step_m: float) -> dict:

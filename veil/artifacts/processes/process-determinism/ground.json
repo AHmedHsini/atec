@@ -1,1 +1,1 @@
-{"hazards": [{"track_id": 2, "cls": "pit", "x": 0.32, "y": 4.92}, {"track_id": 4, "cls": "pit", "x": -0.55, "y": 7.32}, {"track_id": 5, "cls": "rock", "x": -1.0, "y": 4.22}, {"track_id": 3, "cls": "rock", "x": 0.96, "y": 6.13}]}
+{"hazards": [{"track_id": 4, "cls": "pit", "x": -0.55, "y": 7.32}, {"track_id": 2, "cls": "pit", "x": 0.32, "y": 4.92}, {"track_id": 3, "cls": "rock", "x": 0.96, "y": 6.13}, {"track_id": 5, "cls": "rock", "x": -1.0, "y": 4.22}]}

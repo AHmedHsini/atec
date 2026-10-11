@@ -6,7 +6,7 @@
 - The lens spot is still a fixed image-space disk. Rejection uses the sliding ground point, not a hardcoded pixel test, but the simulator still paints that disk at one pixel.
 - Coordinates assume a flat floor and a known mast height and pitch. A slope or a wrong mast angle moves every fix.
 - Stored hazard position is x, y on z = 0. Object height is not estimated.
-- Sigma growth (0.05 m/s while the link is down) and the 1.2 s coast limit are design choices. The spec requires an age or uncertainty display, not these constants.
+- Positional sigma comes from a small Monte Carlo over pixel, pitch, and mast noise. It is not increased just because time passes. `staleness_m` keeps the old 0.05 m/s figure as its own field. The 1.2 s coast limit is still a design choice.
 - The 20-byte layout stores version in the top two bits of the type byte. Versions other than 1 are rejected. There is no room for a second header.
 - Sequence numbers are 16-bit and compared with RFC 1982 serial arithmetic. Half the number space (32768) is the newer/older boundary.
 - Delivery is at-least-once. A lost ack is retried. Duplicates collapse on the ground.
@@ -15,6 +15,11 @@
 - The scout holds while it knows the link is down. Bytes counted as wasted are only sends that ignore that hold.
 - PNG playback matches the simulator pixel for pixel. An mp4 from the `mp4v` codec does not. A packet log at 30% loss can still differ between two runs when an ack arrives on a different step.
 - The live command uses three processes. A stalled child is terminated by the launcher. The fast tests stay in one process. Cross-process byte identity was measured at 0% loss with a 20 ms ack wait. It is not claimed at 30% loss, where a dropped ack changes the retry log.
-- The 16-byte layout described in the protocol document is not implemented.
+- The 16-byte layout described in the protocol document is not implemented. Pose and heartbeat are still 20 bytes. A newer pose or heartbeat replaces the unacked one instead of being retried. Hazards are still retried until ack.
+- A jury video with no pose file uses constant forward speed and says so. That speed is not a surveyed trajectory. Visual odometry is optional and is not the flight default.
+- A single camera seeing the top of a tall rock hits the floor beyond the true base. An optional height correction was measured in the geometry study and is not applied in the flight path.
+- `outputs/hazard_net_no_position.npz` is an ablation. The mission loads `hazard_net.npz` only. PolarDB's 0.581 score, if present on another branch, is not the synthetic 0.9 score.
+- Brightness thresholds are the proposer. A learned region proposer would replace that stage. It is not in this build.
+- No PolarDB image was passed through the flight pipeline on this machine. Those archives are not in the checkout. The PolarDB 0.581 number lives on the unmerged training branch.
 - The map grid does not pan or zoom. Dragging the lander rebases the displayed distances. Dragging the scout pauses the script.
-- `git_revision` is null when git cannot resolve `HEAD`.
+- `git_revision` walks up to the repository that contains `.git`. It is null only when that lookup fails.

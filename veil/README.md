@@ -19,7 +19,9 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-On macOS or Linux the activate path is `.venv/bin/activate`. Dependencies are `numpy` and `opencv-python` only.
+On macOS or Linux the activate path is `.venv/bin/activate`. Dependencies are `numpy` and `opencv-python` only. This checkout was verified with Python 3.13.7. Pinned versions are in `requirements.txt`.
+
+`python -m veil.verify` runs tests, acceptance, bench, geometry, robustness, and ablation. `python -m veil.ingest video.mp4` plays a clip that has no pose file and records the constant-velocity warning. See `docs/JURY_QUICKSTART.md`.
 
 ## Train
 

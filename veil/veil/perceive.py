@@ -5,7 +5,7 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
-from veil.camera import pixel_to_ground
+from veil.camera import active_camera, camera_depth, geometric_sigma, pixel_to_ground, radius_m
 from veil.dataset import features
 from veil.model import HazardNet, load
 
@@ -63,7 +63,9 @@ def _blobs(mask: np.ndarray, scout_xy: tuple[float, float]) -> list[dict]:
             continue
         x, y, distance = ground
         radius_px = max(2.0, float(np.sqrt(area / np.pi)))
-        radius_m = distance * radius_px / 300.0
+        depth = camera_depth(x, y, scout_xy)
+        _old_radius, sized = radius_m(distance, radius_px, depth, active_camera().fx)
+        sigma = geometric_sigma(u, v, scout_xy, seed=(int(u) * 10007 + int(v)) & 0xFFFFFFFF)
         found.append(
             {
                 "cls": "none",
@@ -71,7 +73,8 @@ def _blobs(mask: np.ndarray, scout_xy: tuple[float, float]) -> list[dict]:
                 "v": v,
                 "x": x,
                 "y": y,
-                "radius": radius_m,
+                "radius": sized,
+                "sigma": sigma,
                 "area": area,
             }
         )

@@ -319,7 +319,7 @@ def _ground_main(ports, stop, ground_path: str, state_path: str) -> None:
         rows = []
         for hazard in ground.hazards.values():
             rows.append({"track_id": hazard["track_id"], "cls": hazard["cls"], "x": hazard["x"], "y": hazard["y"]})
-        Path(ground_path).write_text(json.dumps({"hazards": rows}), encoding="utf-8")
+        _atomic_text(ground_path, json.dumps({"hazards": rows}))
         sock.close()
 
 
@@ -332,7 +332,24 @@ def _write_state(ground: GroundMap, sim_t: float, state_path: str) -> None:
         "hazards": ground.view(sim_t, ground.link_state(sim_t) == "UP"),
         "phase": "Survey",
     }
-    Path(state_path).write_text(json.dumps(state), encoding="utf-8")
+    _atomic_text(state_path, json.dumps(state))
+
+
+def _atomic_text(path: str, text: str) -> None:
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    last_error = None
+    for _ in range(5):
+        try:
+            temporary = target.with_suffix(target.suffix + ".tmp")
+            temporary.write_text(text, encoding="utf-8")
+            temporary.replace(target)
+            return
+        except OSError as exc:
+            last_error = exc
+            time.sleep(0.05)
+    if last_error is not None:
+        raise last_error
 
 
 def _drain_acks(link, onboard, wait_s: float = 0.02) -> None:

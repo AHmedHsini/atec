@@ -47,9 +47,11 @@ def test_dead_reckoning_stops_and_uncertainty_grows_only_while_silent():
     assert held["y"] == 1.0
     ground.ingest([_hazard(3, 0, 0.2)], 0.0)
     silent = ground.view(2.0, link_open=False)[0]
-    assert silent["sigma"] == 0.2
+    assert silent["sigma"] == 0.1
+    assert silent["staleness_m"] == 0.1
     fresh = ground.view(2.0, link_open=True)[0]
     assert fresh["sigma"] == 0.1
+    assert fresh["staleness_m"] == 0.1
     assert fresh["age_s"] == 2.0
 
 

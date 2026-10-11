@@ -34,6 +34,7 @@ class Track:
         self.points: list[tuple[float, float]] = [(detection["x"], detection["y"])]
         self.travels: list[float] = [travel]
         self.radii: list[float] = [detection["radius"]]
+        self.sigmas: list[float] = [float(detection.get("sigma", 0.05))]
         self.misses = 0
         self.outcome = TENTATIVE
         self.reason = ""
@@ -49,6 +50,7 @@ class Track:
         self.points.append((detection["x"], detection["y"]))
         self.travels.append(travel)
         self.radii.append(detection["radius"])
+        self.sigmas.append(float(detection.get("sigma", 0.05)))
         self.misses = 0
         self.cls = detection["cls"]
         recent = np.array(self.points[-8:], dtype=float)
@@ -73,7 +75,7 @@ class Track:
             return
         center = np.median(window, axis=0)
         spread = float(np.max(np.linalg.norm(window - center, axis=1)))
-        if spread > MAX_SPREAD_M:
+        if getattr(self, "require_consistency", True) and spread > MAX_SPREAD_M:
             self.outcome = REJECTED
             self.reason = "inconsistent_ground"
             self.confirmed = False
@@ -85,16 +87,18 @@ class Track:
         self.confirmed = True
         self.x = float(center[0])
         self.y = float(center[1])
-        self.sigma = max(0.05, spread)
+        geometry = float(np.median(self.sigmas[start_index:])) if self.sigmas else 0.05
+        self.sigma = max(0.05, spread, geometry)
         self.radius = float(np.median(self.radii[start_index:]))
         self.agreement = int(round(100 * (1 - spread / MAX_SPREAD_M)))
 
 
 class Tracker:
-    def __init__(self):
+    def __init__(self, require_consistency: bool = True):
         self.tracks: list[Track] = []
         self.archived: list[Track] = []
         self._next_id = 1
+        self.require_consistency = require_consistency
 
     def update(self, detections: list[dict], travel: float, sim_t: float | None = None) -> None:
         unused = set(range(len(self.tracks)))
@@ -110,10 +114,13 @@ class Tracker:
                     best = index
                     best_distance = distance
             if best is None:
-                self.tracks.append(Track(self._next_id, detection, travel))
+                track = Track(self._next_id, detection, travel)
+                track.require_consistency = self.require_consistency
+                self.tracks.append(track)
                 self._next_id += 1
             else:
                 unused.remove(best)
+                self.tracks[best].require_consistency = self.require_consistency
                 self.tracks[best].add(detection, travel, sim_t)
         for index in unused:
             self.tracks[index].misses += 1

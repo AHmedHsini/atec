@@ -1,0 +1,31 @@
+{
+  "parameters": 17616,
+  "weight_file_kb": 71.27,
+  "frames": 80,
+  "render_ms": {
+    "mean_ms": 0.4424,
+    "p50_ms": 0.4328,
+    "p95_ms": 0.5051
+  },
+  "perceive_ms": {
+    "mean_ms": 1.4997,
+    "p50_ms": 1.4409,
+    "p95_ms": 1.6608
+  },
+  "frame_ms": {
+    "mean_ms": 2.2162,
+    "p50_ms": 2.1346,
+    "p95_ms": 2.4969
+  },
+  "fps_excluding_radio": 451.13,
+  "cpu_time_s": 0.188,
+  "peak_rss_bytes": null,
+  "affinity": "not available on this platform",
+  "opencv_threads": 1,
+  "python": "3.13.7",
+  "numpy": "2.4.4",
+  "opencv": "4.13.0",
+  "cpu": "Intel64 Family 6 Model 154 Stepping 3, GenuineIntel",
+  "flight_weights": "C:\\Users\\hsini\\OneDrive\\Bureau\\ATEC\\veil\\outputs\\hazard_net.npz",
+  "note": "perceive_ms includes proposal, the NumPy network, projection, and geometric sigma. The flight weights were not retrained."
+}

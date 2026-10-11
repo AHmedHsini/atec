@@ -12,8 +12,8 @@ Layout id: magic byte `0xC7`. Protocol version is 1. It lives in the top two bit
 | 4 | 4 | u32 | t_ms | Mission milliseconds, 0–4294967295. On a heartbeat this is the uptime |
 | 8 | 2 | u16 | track_id | 0–65535. Pose uses 0. Heartbeat uses the count of confirmed tracks |
 | 10 | 1 | u8 | class | Hazard: 1 rock, 2 pit. Pose and heartbeat: 0. Other hazard classes are rejected |
-| 11 | 1 | u8 | flags | Hazard and pose write 0. Heartbeat writes the mode: 0 RUN, 1 SAFE |
-| 12 | 1 | u8 | agreement | Hazard: 0–100, share of the geometric window that agreed. Heartbeat: queue depth, capped at 100 |
+| 11 | 1 | u8 | flags | Hazard writes 0. Pose and heartbeat write the mode: 0 RUN, 1 SAFE |
+| 12 | 1 | u8 | agreement | Hazard: 0–100. Pose and heartbeat: queue depth, capped at 100. Pose also carries the confirmed count in track_id |
 | 13 | 2 | i16 | x_cm | Centimeters, −32768–32767 (−327.68 m to 327.67 m) |
 | 15 | 2 | i16 | y_cm | Centimeters, same range |
 | 17 | 1 | u8 | sigma_cm | Centimeters, 0–255 (0–2.55 m) |
@@ -53,7 +53,7 @@ The 20-byte packet carries more than that bare float32 record. In the same 20 by
 
 The scout does not transmit while it knows the link is down. `wasted_blackout_bytes` counts a send that is attempted anyway. On the normal path that field stays 0. A direct `link.send` during a blackout still increments it and does not draw the loss generator.
 
-Each hazard leaves the queue after 12 transmission attempts or after `pending_limit_s` (30 s by default, 8 s in the closed-link stress run) and is not queued again. The sender does not retry forever. Pose and heartbeat slots are replaced in place and are not counted as lost hazards.
+Each hazard leaves the queue after 12 transmission attempts or after `pending_limit_s` (30 s by default, 8 s in the closed-link stress run) and is not queued again. The sender does not retry forever. Pose and heartbeat are offered once. A newer pose or heartbeat replaces the slot and increments `superseded_drops`. They are not counted as lost hazards. Variable-length pose packets were not adopted: acceptance still checks `bytes_sent == sent * 20`.
 
 The pending queue holds at most 8 slots. When it is over that, the lowest-value slot is dropped. Heartbeats are worth 0.001, poses 0.01, and hazards more than either, so a hazard is kept and a pose is dropped first.
 

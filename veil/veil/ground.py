@@ -2,8 +2,9 @@
 
 Older packets cannot replace a newer fix for the same track. While the
 radio is down, the scout is coasted for at most 1.2 s and then held.
-Hazard sigma grows by 0.05 m for each second the link has been down
-since that hazard's timestamp.
+Positional sigma stays the value packed on the scout. Age is separate.
+`staleness_m` is the old 0.05 m/s time penalty, shown on its own and
+not added to sigma.
 """
 
 from __future__ import annotations
@@ -59,6 +60,7 @@ class GroundMap:
 
     def _ingest_pose(self, message: dict, sim_t: float) -> None:
         message["received_sim_t"] = sim_t
+        self.heartbeat_at = sim_t
         if not self.poses:
             self.poses.append(message)
             return
@@ -106,20 +108,28 @@ class GroundMap:
                 predicted = True
         elif not link_open:
             predicted = True
-        return {"x": x, "y": y, "predicted": predicted, "age_s": round(age, 2)}
+        held = (not link_open) and age > COAST_S
+        return {
+            "x": x,
+            "y": y,
+            "predicted": predicted,
+            "hold": held,
+            "age_s": round(age, 2),
+            "silence_s": round(age, 2),
+        }
 
     def view(self, sim_t: float, link_open: bool) -> list[dict]:
         rows = []
         for hazard in self.hazards.values():
             age = max(0.0, sim_t - hazard["t_ms"] / 1000.0)
-            growth = 0.0 if link_open else SIGMA_GROWTH_M_PER_S * age
             rows.append(
                 {
                     "id": hazard["track_id"],
                     "cls": hazard["cls"],
                     "x": hazard["x"],
                     "y": hazard["y"],
-                    "sigma": round(hazard["sigma"] + growth, 3),
+                    "sigma": round(float(hazard["sigma"]), 3),
+                    "staleness_m": round(SIGMA_GROWTH_M_PER_S * age, 3),
                     "radius": hazard["radius"],
                     "age_s": round(age, 2),
                     "agreement": hazard["agreement"],

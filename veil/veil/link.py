@@ -37,6 +37,7 @@ class LossyLink:
         self.dropped = 0
         self.bytes_sent = 0
         self.wasted_blackout_bytes = 0
+        self.acks = 0
         self.corrupt_rejected = 0
         self._inbox: list[dict] = []
         self._lock = threading.Lock()
@@ -92,6 +93,7 @@ class LossyLink:
                 ack = decoded["seq"].to_bytes(2, "little")
                 try:
                     self.ground.sendto(ack, self.scout_addr)
+                    self.acks += 1
                 except OSError:
                     break
 
@@ -142,6 +144,7 @@ class OutboundLink:
         self.dropped = 0
         self.bytes_sent = 0
         self.wasted_blackout_bytes = 0
+        self.acks = 0
 
     def is_open(self, sim_t: float) -> bool:
         start, end = self.blackout

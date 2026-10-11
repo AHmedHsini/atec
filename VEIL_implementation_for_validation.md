@@ -1,12 +1,12 @@
 # VEIL — implementation brief for review
 
-Upload this file together with the ATEC'26 Specification Book. The code is in the `veil` folder next to this file. This brief describes the system as of 10 October 2026, after the engineering hardening pass. It is a status report, not the specification.
+Upload this file together with the ATEC'26 Specification Book. The code is in the `veil` folder next to this file. This brief describes the system as of 11 October 2026, after the systems-integration pass and a separate PolarDB training run. It is a status report, not the specification.
 
-Ask the reviewer to compare this implementation with the specification for project C.R.A.T.E.R. (Constrained Reconnaissance, Autonomy & Telemetry in Extreme Regions): what is required, what is flexible, what is ambiguous, and what is still missing before a preselection submission. Do not treat this file as proof by itself. The measured numbers below come from `veil/artifacts/acceptance/`.
+Ask the reviewer to compare this implementation with the specification for project C.R.A.T.E.R. (Constrained Reconnaissance, Autonomy & Telemetry in Extreme Regions): what is required, what is flexible, what is ambiguous, and what is still missing before a preselection submission. Do not treat this file as proof by itself. The measured mission numbers below come from `veil/artifacts/acceptance/`. The PolarDB number comes from `veil/outputs/polar_train_report.json` on draft pull request https://github.com/AHmedHsini/atec/pull/1. That pull request is not merged. The flight weights on `main` are still the synthetic network.
 
 ## Product
 
-VEIL is a software-emulated lunar scout. The camera picture stays on the rover. A small local network names rocks and pits. A hazard is radioed only after two views agree on the same ground point. Mission Control plots only what survived a lossy link, and it shows how old and how uncertain each fix is.
+VEIL is a software-emulated lunar scout. The camera picture stays on the rover. OpenCV proposes blobs. A small local NumPy network names them. Distance is not a network output: each blob center is a ray from a known mast, intersected with the flat floor. A hazard is radioed only after two views agree on the same ground point. Mission Control plots only what survived a lossy link, and it shows how old and how uncertain each fix is.
 
 The black dot on the left of the camera picture is a smudge stuck on the lens, painted at pixel (36, 110) with radius 7. It is not on the ground. It stays on the same pixel while the scout drives, so its guessed ground point slides. The tracker rejects that track. It is not drawn on the map.
 
@@ -16,51 +16,59 @@ Fixed by the spec:
 
 - 100% software-emulated. No rover hardware.
 - Data flow: Perception, then Telemetry, then Dashboard.
-- Local perception. No cloud inference API.
+- Local perception. No cloud inference API. Cloud was used only to train a second weight file from NASA PolarDB. The live scout does not call a cloud model.
 - Severe bandwidth. This repo chose a fixed 20-byte message. The book does not set a byte count.
 - A pixel becomes a spatial coordinate relative to the landing site.
 - The dashboard shows data age or uncertainty.
 - The lossy link is real sockets, not a comment.
 
-Left open by the spec: model, math, packet layout, language, and UI. This build uses Python, NumPy, OpenCV, UDP, and one HTML/JS page.
+Left open by the spec: model, math, packet layout, language, UI, and whether onboard, radio, and ground are separate programs. This build uses Python, NumPy, OpenCV, UDP, and one HTML/JS page. The live command runs three operating-system processes. Tests can stay in one process.
 
 Ambiguities, recorded rather than invented:
 
 - The book sets no numeric bandwidth cap, loss rate, frame-rate gate, hazard list, or blackout length. 20 bytes, 30% loss, and the blackout windows are design choices.
-- "2D pixel to 3D" is implemented as a 3D ray intersected with the flat floor z = 0. The stored fix is x, y. Object height is not estimated.
-- "Video ingestion" in the integration rubric is local simulated frames. The radio does not carry images.
-- The book does not require three operating-system processes. Onboard, radio, and ground are threads in one process.
+- "2D pixel to 3D" is implemented as a 3D ray intersected with the flat floor z = 0. The stored fix is x, y, plus the flat distance from the scout. Object height is not estimated. A rock above the plane or a pit below it moves the hit.
+- "Video ingestion" means the pipeline reads frames. Simulated frames satisfy it. The same pipeline can also read a PNG directory or an mp4 plus a pose CSV. The radio does not carry images.
+- The book does not require NASA imagery, a field camera, or three processes. PolarDB and the process split are extra.
 
 ## What a run does
 
 1. The scout drives from the lander along +Y, 0.05 m per step. The live run is 130 frames at 0.2 s (0.25 m/s, about 6.5 m).
 2. A mast camera renders 320×240. The human sees a color JPEG on the dashboard. That JPEG is local only. The badge says "STAYS ON ROVER".
 3. Perception proposes dark blobs (value under 60) and bright blobs (value over 175) with area at least 28 px. A trained network then labels each blob as none, rock, pit, or lens artifact. It does not scan the whole image.
-4. A tracker confirms a hazard only after the scout has traveled at least 0.7 m and the ground points in that window stay within 0.32 m. Otherwise the outcome is explicit:
+4. The blob center is converted to landing-site x, y and a flat range by `pixel_to_ground`. Pixel radius becomes meters with `distance * radius_px / 300`.
+5. A tracker confirms a hazard only after the scout has traveled at least 0.7 m and the ground points in that window stay within 0.32 m. Otherwise the outcome is explicit:
    - `rejected`, reason `inconsistent_ground` — the points slide (the lens spot).
    - `expired`, reason `missed_detections` — the track went quiet before it could be judged.
    A rejection is archived. It is not later reported as zero. An expiration does not count as a rejection.
-5. Confirmed rocks and pits, plus a low-priority pose at most every 0.5 s, are packed into 20-byte datagrams. The link drops about 30% of packets, closes for a blackout, and allows 80 bytes per burst. The scout keeps the same sequence and retries until a 2-byte ack. A same-sequence retry with a newer timestamp can tighten the ground fix. An older packet cannot roll it back.
-6. The ground map draws a marker only when a valid packet arrives. During silence it may coast the scout for at most 1.2 s, then it holds the last pose and marks it predicted. Hazard sigma grows by 0.05 m per second of silence. Age is seconds since the packet timestamp.
+6. Confirmed rocks and pits, a pose at most every 0.5 s, and a heartbeat every 1.0 s are packed into 20-byte datagrams. The link drops about 30% of packets, closes for a blackout, and allows 80 bytes per burst. While the scout knows the link is down it holds the queue and does not spend bytes. It retries until a 2-byte ack. A same-sequence retry with a newer timestamp can tighten the ground fix. An older packet cannot roll it back. Sequence numbers use RFC 1982 serial arithmetic, so sequence 0 is newer than 65535.
+7. If perception stalls for more than 1.0 s, the onboard mode becomes SAFE. Heartbeats continue. New hazards are not queued until a fresh observation returns the mode to RUN.
+8. The ground map draws a marker only when a valid packet arrives. Heartbeats do not create hazards. Link state is UP if the last heartbeat is under 1.0 s old, DEGRADED under 3.0 s, otherwise DOWN. During silence the map may coast the scout for at most 1.2 s, then it holds the last pose and marks it predicted. Hazard sigma grows by 0.05 m per second of silence. Age is seconds since the packet timestamp.
 
-Live blackout is 4 s to 12 s. After the drive the scout stays parked and the radio closes for 4 s of every 14 s. Dashboard: http://127.0.0.1:8877 (`python run_mission.py`). The live report is `veil/artifacts/live/report.json`. It does not overwrite the acceptance files.
+The send queue holds at most 8 packets and drops the lowest value. A heartbeat is worth 0.001, a pose 0.01, a hazard more. A dropped hazard is counted once and is not put back. A hazard also leaves the queue after 12 real send attempts or after it has waited 30 s (8 s in the stress case). Pose and heartbeat drops are not counted as lost hazards.
+
+Live blackout is 4 s to 12 s. After the drive, when the radio cycle is on, the link closes for 4 s of every 14 s. Dashboard: http://127.0.0.1:8877 (`python run_mission.py`). That command starts onboard, radio, and ground as three processes. `--in-process` keeps the fast single-process path used by most tests. The live report is `veil/artifacts/live/report.json`. It does not overwrite the acceptance files.
 
 ## Architecture
 
 | Role | File | What it may know |
 | --- | --- | --- |
-| Onboard computer | `veil/onboard.py` | Camera, tracker, send queue. Not the ground map. |
-| Radio | `veil/link.py` | UDP on 127.0.0.1, two sockets, seeded loss, blackout, 80-byte budget, acks. |
+| Onboard computer | `veil/onboard.py` | Camera, tracker, send queue, watchdog. Not the ground map. |
+| Radio | `veil/link.py` | UDP on 127.0.0.1, seeded loss, blackout, 80-byte budget, acks. |
 | Ground map | `veil/ground.py` | Decoded packets only. Not images. |
+| Process split | `veil/procs.py` | Live parent plus onboard, radio, and ground children. |
+| Frame source | `veil/source.py` | Simulator, PNG directory plus `poses.csv`, or mp4 plus `{stem}_poses.csv`. |
 | Dashboard | `veil/web/index.html` | Ground state and a local camera preview. |
 
-`veil/mission.py` `run()` is the one pipeline. Tests and the live command both call it. `run` closes sockets and shuts the HTTP server down. The server does not reuse the address, so a second live process fails instead of hiding behind the first.
+`veil/mission.py` `run()` is the in-process pipeline. `run(..., processes=True)` delegates to `veil/procs.py`. Tests and acceptance use the in-process path unless the scenario name says processes. `run` closes sockets and shuts the HTTP server down. The server does not reuse the address, so a second live process fails instead of hiding behind the first.
 
-## Camera
+## Camera and distance
 
 `veil/camera.py`. Mast height 0.55 m, pitch 18° down, fx = fy = 300, principal point (160, 120). Yaw 0 looks along +Y. Right is +X. Up on the map is +Y. Image v grows downward.
 
-`pixel_to_ground` intersects the pixel ray with z = 0. Non-finite inputs, rays that do not point down, and points behind the camera return no hit. The image center meets the ground about 1.7 m in front of the scout. The pale map wedge is `view_polygon()`, the same rays as the picture, yaw locked to 0.
+`pixel_to_ground` intersects the pixel ray with z = 0 and returns x, y, and the flat distance from the scout. Non-finite inputs, rays that do not point down, and points behind the camera return no hit. The image center meets the ground about 1.7 m in front of the scout. The pale map wedge is `view_polygon()`, the same rays as the picture, yaw locked to 0.
+
+This is a range measurement under a flat-floor assumption. It is not stereo, and the network does not predict distance. PolarDB's own cameras are a 30 cm stereo pair with LiDAR. That depth was used to label training patches. It is not the flight ranging method.
 
 A grid of ground points in front of the scout projects to pixels and back within 2 cm (`tests/test_geometry.py`).
 
@@ -77,11 +85,12 @@ Flat ground. Lander origin. Four hazards in `veil/sim.py`:
 
 ## Perception
 
-Training: `python -m veil.train`. The simulator renders labeled 16×16 patches (262 features: pixels, mean, spread, dark fraction, bright fraction, and normalized pixel position). Frames invent new rocks and pits, shift brightness, and add a little yaw. Some frames use the flight path. Extra frames paint a pit or rock under the lens and still label that pixel as the lens.
+The flight trainer is `python -m veil.train`. The simulator renders labeled 16×16 patches (262 features: pixels, mean, spread, dark fraction, bright fraction, and normalized pixel position). Frames invent new rocks and pits, shift brightness, and add a little yaw. Some frames use the flight path. Extra frames paint a pit or rock under the lens and still label that pixel as the lens.
 
 - 1,272 training patches, 318 each of none, rock, pit, and artifact. File: `veil/outputs/train_set.npz`.
-- Network: NumPy MLP, 262 inputs, 64 ReLU units, 4 softmax outputs. Weights: `veil/outputs/hazard_net.npz`.
-- Held-out set is `generate(80, seed=1007)`, not the training seed 7. Accuracy 0.9 on 448 synthetic patches. This is not lunar field performance.
+- Network: NumPy MLP, 262 inputs, 64 ReLU units, 4 softmax outputs. Not a convolutional detector and not YOLO. Dependencies stay `numpy` and `opencv-python`.
+- Flight weights: `veil/outputs/hazard_net.npz`.
+- Held-out set is `generate(80, seed=1007)`, not the training seed 7. Accuracy 0.9 on 448 synthetic patches. This is not lunar field performance and it is not the PolarDB score.
 - Confusion matrix, rows and columns ordered none, rock, pit, artifact:
 
 ```text
@@ -95,39 +104,60 @@ Eleven held-out lens patches were called pits. Confirmation still requires geome
 
 Inference loads the npz. If the file is missing or incomplete it raises. It does not train. `tests/test_model.py` checks the feature width, empty frames, and a broken weights file.
 
+### PolarDB, trained in the cloud, not yet the flight model
+
+A cloud job downloaded the NASA Ames POLAR Stereo set (PolarDB) from https://ti.arc.nasa.gov/dataset/IRG_PolarDB/. The archives are about 11.7 GB: terrains 1–13, radiometric calibration, organized LiDAR range maps, and the readme. They are not in git.
+
+The images have no rock or pit labels. Labels come from LiDAR height on the rectified range maps: a local high residual is a rock, a low residual or a crater bowl is a pit, and smooth ground is none. PolarDB has no lens-smudge class, so artifact examples are synthetic dark disks. Patches use the same 262-feature recipe as the flight model.
+
+The cloud run wrote `veil/outputs/hazard_net_polar.npz` and `veil/outputs/polar_train_report.json` on branch `cursor/polar-hazard-train-9dbc`.
+
+- 4,800 training patches and 960 validation patches, balanced to 1,200 and 240 per class.
+- 266 train frames, 166 validation frames. Terrains 9 and 12 are fully held out. Terrain 13 was downloaded and was not in the train or held-out lists in the report.
+- Held-out accuracy **0.581**. Confusion, same class order:
+
+```text
+[[126, 56, 42, 16],
+ [51, 111, 56, 22],
+ [63, 57, 110, 10],
+ [14, 11, 4, 211]]
+```
+
+The artifact row is high because those patches are painted disks. Rock, pit, and none are near chance-to-moderate. This number must not be quoted as the synthetic 0.9.
+
+The simulated mission still loads `hazard_net.npz`. The PolarDB file was not swapped in, because the acceptance rule is 4 delivered hazards and 0 false hazards on the painted world. Draft pull request: https://github.com/AHmedHsini/atec/pull/1. Local `main` does not contain `veil/polar.py` until that branch is merged.
+
 ## Packet
 
-`veil/packet.py`. Little-endian, magic `0xC7`, always 20 bytes. There is no version field. The magic is the layout id.
+`veil/packet.py`. Little-endian, magic `0xC7`, always 20 bytes. Format string `<BBHIHBBBhhBBB`.
 
 | Offset | Field |
 | --- | --- |
 | 0 | magic u8 |
-| 1 | type u8: 1 hazard, 2 pose |
+| 1 | `(version << 6) \| type`. Version is 1. Type 1 hazard, 2 pose, 3 heartbeat. |
 | 2 | sequence u16 |
 | 4 | time ms u32 |
-| 8 | track id u16 |
-| 10 | class u8: 1 rock, 2 pit, 0 on a pose |
-| 11 | flags u8 |
-| 12 | agreement u8, 0–100 |
+| 8 | track id u16. On a heartbeat this is the confirmed-hazard count. |
+| 10 | class u8: 1 rock, 2 pit, 0 on a pose or heartbeat |
+| 11 | flags u8. On a heartbeat this is the mode: 0 RUN, 1 SAFE. |
+| 12 | agreement u8, 0–100. On a heartbeat this is the queue depth, capped at 100. |
 | 13 | x centimeters i16 |
 | 15 | y centimeters i16 |
 | 17 | sigma centimeters u8, 0–2.55 m |
 | 18 | radius centimeters u8, 0–2.55 m |
-| 19 | XOR of bytes 0–18 |
+| 19 | CRC-8 over bytes 0–18, polynomial 0x07, init 0, no reflection, xorout 0 |
 
-`encode` raises if a value does not fit. It does not clamp or wrap. `decode` returns nothing for a short buffer, a bad checksum, an unknown type, or a hazard class that is not rock or pit. Example packet for a pit at (−1.25 m, 5.00 m):
+`encode` raises if a value does not fit. It does not clamp or wrap. `decode` returns nothing for a short buffer, a bad CRC, a version other than 1, an unknown type, or a hazard class that is not rock or pit.
 
-```text
-c7010400dc050000020002005083fff4010c28e6
-```
+A 16-byte layout was written down in `veil/docs/TELEMETRY_PROTOCOL.md` and was not implemented. It would drop agreement and would wrap the time field every 65.536 s. The flight packet stays 20 bytes.
 
-Full contract: `veil/docs/TELEMETRY_PROTOCOL.md`.
+Delivery is at-least-once with receiver collapse. It is not exactly-once. A lost ack causes another copy. Bytes in the report are application payload only, 20 bytes per send attempt, including drops. UDP and IP headers are not counted. The first attempt of a hazard, pose, or heartbeat is counted in that bucket. Later attempts are `retransmission_bytes`. Sends while the scout already knows the link is closed would be `wasted_blackout_bytes`. On the acceptance runs that counter is 0, because the scout holds.
 
-Delivery is at-least-once with receiver collapse. It is not exactly-once. A lost ack causes another copy. Sequence numbers are 16-bit and wrap is not defined. Bytes in the report are application payload only, 20 bytes per send attempt, including drops. UDP and IP headers are not counted.
+Full contract: `veil/docs/TELEMETRY_PROTOCOL.md`. A recorded log is `veil/artifacts/acceptance/packet_log_seed26.hex`.
 
 ## Ground and dashboard
 
-Older poses and older hazard fixes are ignored. Duplicate sequence at the same timestamp does not create a second marker. The map grid does not pan or zoom. The lander and the scout can be dragged. Double-click resumes the scripted drive. Pits are one orange ring. Rocks are one teal diamond. Hazard rows show side of path, distance from the lander, sigma, and age in seconds.
+Older poses and older hazard fixes are ignored. The same sequence with a newer timestamp refreshes the fix and keeps the original receive time. Duplicate sequence at the same timestamp does not create a second marker. The map grid does not pan or zoom. The lander and the scout can be dragged. Double-click resumes the scripted drive. Pits are one orange ring. Rocks are one teal diamond. Hazard rows show side of path, distance from the lander, sigma, and age in seconds.
 
 ## Checks
 
@@ -138,28 +168,57 @@ python -m pytest tests -q
 python -m veil.accept
 ```
 
-Latest run: **27 passed**. `python -m veil.accept` writes `veil/artifacts/acceptance/SUMMARY.txt` from the JSON. Exit status is pytest's. A failed assertion is not rewritten into a pass.
+Latest run on this checkout: **43 passed**. `python -m veil.accept` then writes `veil/artifacts/acceptance/SUMMARY.txt` and exits 0 only if the sweep gate passes. A failed assertion is not rewritten into a pass.
 
-Both scenarios use seed 26, step 0.05 m, loss 0.3, budget 80 bytes.
+Both in-process scenarios use seed 26, step 0.05 m, loss 0.3, budget 80 bytes.
 
 | | Short | Long (same timing as the live drive, without waiting) |
 | --- | --- | --- |
 | Frames, dt, blackout | 140, 0.1 s, 0.5–6 s | 130, 0.2 s, 4–12 s |
 | Hazards | 4/4, 0 false, 0 missed | 4/4, 0 false, 0 missed |
 | Tracks | 1 rejected, 0 expired | 1 rejected, 0 expired |
-| Mean / max error | 0.033 m / 0.094 m | 0.039 m / 0.085 m |
-| Payload vs naive JSON | 860 vs 24373 | 1340 vs 23798 |
-| Sent / delivered / dropped | 43 / 28 / 15 | 67 / 43 / 24 |
-| Detect-only rate | 775 frames/s | 762 frames/s |
+| Mean / max error | 0.033 m / 0.094 m | 0.038 m / 0.085 m |
+| Payload vs naive JSON | 900 vs 24373 | 1600 vs 23798 |
+| Payload vs every detection as float32 | 1840 vs 9220 | 3060 vs 9020 |
+| Confirmed hazards as float32 | 80 | 80 |
+| Hazard / pose / heartbeat / retries | 80 / 520 / 260 / 40 | 80 / 880 / 520 / 120 |
+| Bytes per delivered hazard | 20.0 | 20.0 |
+| Wasted during blackout | 0 | 0 |
+| Sent / delivered / dropped | 92 / 59 / 33 | 153 / 100 / 53 |
+| Detect-only rate | 218 frames/s | 169.9 frames/s |
 | `passed` | true | true |
 
-Error method: each delivered hazard is matched once to the nearest same-class truth within 0.6 m. The frame rate is mission frames divided by time inside `detect` only. Radio sleep is excluded.
+The long byte split adds up: 80 + 880 + 520 + 120 = 1600. Pose and heartbeat are sent once and then replaced, so retries fell from 1580 bytes to 120. Detect rate fell because each blob now carries a small uncertainty sample. It is still above 15 frames/s. The large saving versus every detection is onboard confirmation. Packing does not shrink one confirmed hazard below 20 bytes. Pose, heartbeat, and retries make the radio total larger than the 80-byte confirmed-only baseline.
 
-Unit tests also cover geometry, packet limits, track outcomes, ground ordering, seeded loss near 30%, blackout, delivery plus ack, the burst budget, and model loading.
+Error method: each delivered hazard is matched once to the nearest same-class truth within 0.6 m. The frame rate is mission frames divided by time inside `detect` only. Radio sleep is excluded. The frame rate moves between machines. The gate is above 15 frames/s.
 
-An earlier live file, `veil/outputs/preselection_report.json`, is obsolete. It was overwritten by an old dashboard and reported zero withheld tracks. Do not use it. Current results are the two acceptance JSON files.
+Loss sweep, no blackout, 10 seeds. The pass gate is: latency changes with loss, and at 30% the minimum delivered hazards is at least 4. Rows at 50% and above are informational.
+
+| Loss | mean / min delivered | receipt median / p95 (s) | retries per hazard | informational |
+| --- | --- | --- | --- | --- |
+| 0.1 | 4.0 / 4 | 0.0 / 0.1 | 0.175 | no |
+| 0.3 | 4.0 / 4 | 0.0 / 0.2 | 1.325 | no |
+| 0.5 | 4.0 / 4 | 0.0 / 0.305 | 3.075 | yes |
+| 0.7 | 4.0 / 4 | 0.15 / 0.605 | 6.25 | yes |
+| 0.9 | 2.9 / 2 | 0.3 / 0.96 | 9.825 | yes |
+
+Medians at 10% and 30% are 0.0 s because a first try that lands is delivered in the same simulated step it was confirmed. The p95 values, and the medians from 50% up, are what move.
+
+Recovery at 30% loss, blackout 0.5–6 s: first queued hazard median 0.0 s, all queued median 0.1 s, minimum delivered 4. Stress blackout that never reopens, pending limit 8 s, seed 1: 4 hazards lost, 0 delivered, 0 wasted bytes.
+
+Other acceptance files:
+
+- `source_compare.json`: PNG playback matches the simulator pixels and also delivers 4/4 with mean error 0.033 m. An mp4 from the `mp4v` codec delivers 4/4 with mean error 0.035 m. At 30% loss the packet log is not byte-identical to the simulator, because ack timing changes retries.
+- `acceptance-processes.json`: three processes, 140 frames, dt 0.1 s, blackout 0.5–6 s, loss 0.3, seed 26. 4/4, 0 false, 1 rejected, passed.
+- `process_determinism.json`: two process runs at 0% loss, 40 frames, seed 4, identical logs of 28 packets after a 20 ms ack drain. That identity is not claimed at 30% loss.
+
+Unit tests also cover geometry, packet limits, CRC and version, track outcomes, ground ordering, heartbeats and link state, the watchdog, queue trim, seeded loss near 30%, blackout, delivery plus ack, the burst budget, hazard expiry, and model loading.
+
+An earlier live file, `veil/outputs/preselection_report.json`, is obsolete. It was overwritten by an old dashboard and reported zero withheld tracks. Do not use it.
 
 ## Docs in the repo
+
+Repository: https://github.com/AHmedHsini/atec (private).
 
 - `veil/README.md` — setup, train, test, live demo
 - `veil/docs/ENGINEERING_AUDIT.md`
@@ -173,10 +232,10 @@ An earlier live file, `veil/outputs/preselection_report.json`, is obsolete. It w
 
 - Pitch slides and the 7-minute talk were intentionally not built.
 - The network is not a full-image detector. Proposals are still brightness thresholds.
-- Held-out accuracy is synthetic. Eleven lens patches in that set were labeled pits. Geometry, not the class name, keeps them off the map.
-- Localization assumes a flat floor and a known mast.
-- There is no packet version byte.
+- The flight held-out accuracy of 0.9 is synthetic. Eleven lens patches in that set were labeled pits. Geometry, not the class name, keeps them off the map.
+- PolarDB held-out accuracy is 0.581 on a different camera and lighting. Those weights are not the onboard file. The draft pull request is not merged.
+- Localization assumes a flat floor and a known mast. One camera does not measure object height.
 - The dashboard's drag and resume path was not fully re-clicked in a browser during the hardening pass. The page text that the picture is not a downlink is asserted by a test.
-- `git_revision` in the JSON is null when git cannot name HEAD.
+- `git_revision` in older acceptance JSON is null when git cannot name HEAD. This folder is now a git checkout.
 
-Readiness of the software pipeline: conditionally ready for a technical preselection review. The acceptance suite passes. The pitch is separate, and the limits above should be stated rather than hidden.
+Readiness of the software pipeline: conditionally ready for a technical preselection review. The acceptance suite passes on the synthetic mission with the original weights. The pitch is separate. PolarDB is extra evidence with a lower, separately reported score, and the limits above should be stated rather than hidden.

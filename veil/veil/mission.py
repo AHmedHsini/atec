@@ -142,6 +142,7 @@ def run(
                     queued_ids = set()
             _note_link(events, sim_t, open_now, link_was_open)
             link_was_open = open_now
+            holder["pose_warning"] = getattr(source, "pose_warning", "") if source is not None else ""
             _publish(holder, ground, link, onboard, sim_t, events, blackout, driving=placed is None)
             if not advance:
                 time.sleep(0.12)
@@ -189,6 +190,8 @@ def run(
             recoveries=recoveries,
             first_hazard_recovery=first_hazard_recovery,
             all_queued_recovery=all_queued_recovery,
+            pose_warning=getattr(source, "pose_warning", "") if source is not None else "",
+            pose_mode=getattr(source, "pose_mode", "simulator") if source is not None else "simulator",
         )
         _publish(holder, ground, link, onboard, settle_t, events, blackout, driving=False, report=report)
         if write_report:
@@ -304,7 +307,7 @@ def _retransmission_mean(onboard: Onboard) -> float:
     return float(sum(extra) / len(extra))
 
 
-def _report(ground, link, onboard: Onboard, frames: int, loss: float, blackout, scenario: str, seed: int, dt: float, step_m: float, recoveries: list[float] | None = None, first_hazard_recovery=None, all_queued_recovery=None) -> dict:
+def _report(ground, link, onboard: Onboard, frames: int, loss: float, blackout, scenario: str, seed: int, dt: float, step_m: float, recoveries: list[float] | None = None, first_hazard_recovery=None, all_queued_recovery=None, pose_warning: str = "", pose_mode: str = "simulator") -> dict:
     matched = []
     false_count = 0
     used = set()
@@ -369,6 +372,14 @@ def _report(ground, link, onboard: Onboard, frames: int, loss: float, blackout, 
         "retransmission_bytes": onboard.retransmission_bytes,
         "wasted_blackout_bytes": link.wasted_blackout_bytes,
         "bytes_per_delivered_hazard": round(onboard.hazard_bytes / len(matched), 3) if matched else None,
+        "superseded_drops": onboard.superseded_drops,
+        "ack_bytes": link.acks * 2,
+        "udp_ipv4_header_bytes_estimate": link.sent * 28,
+        "udp_header_note": "28 bytes is the UDP plus IPv4 header per datagram. It is not measured on the wire.",
+        "pose_warning": pose_warning,
+        "pose_mode": pose_mode,
+        "competent_binary_bytes": onboard.float32_confirmed_bytes + onboard.pose_bytes,
+        "competent_binary_note": "Confirmed hazards as 20-byte float stand-in plus pose bytes already sent. No CRC and no ack in this baseline.",
         "lost_hazards": onboard.lost_hazards,
         "confirm_to_receipt_s": [round(value, 3) for value in latencies],
         "retransmissions_per_hazard": round(retransmissions, 3),
@@ -424,6 +435,8 @@ def _publish(holder, ground, link, onboard: Onboard, sim_t, events, blackout, dr
         "link": "open" if link_open else "blackout",
         "link_state": ground.link_state(sim_t),
         "mode": onboard.mode,
+        "pose_warning": holder.get("pose_warning") or "",
+        "packet_tail": onboard.packet_log[-40:],
         "manual": bool(manual.get("scout")),
         "camera_id": holder.get("camera_id") or "",
         "camera_pose": holder.get("camera_pose"),
@@ -443,7 +456,15 @@ def _publish(holder, ground, link, onboard: Onboard, sim_t, events, blackout, dr
             "delivered": link.delivered,
             "dropped": link.dropped,
             "budget": BUDGET_BYTES,
+            "hazard_bytes": onboard.hazard_bytes,
+            "pose_bytes": onboard.pose_bytes,
+            "heartbeat_bytes": onboard.heartbeat_bytes,
+            "retransmission_bytes": onboard.retransmission_bytes,
+            "superseded_drops": onboard.superseded_drops,
+            "ack_bytes": link.acks * 2,
+            "bytes_per_delivered_hazard": round(onboard.hazard_bytes / max(1, len(ground.hazards)), 3),
             "model_accuracy": round(load_model().val_accuracy, 3),
+            "model_note": "Synthetic held-out accuracy. Not the PolarDB score.",
             "model_samples": load_model().samples,
         },
         "report": report if report is not None else previous,

@@ -1,0 +1,44 @@
+{
+  "flight_val_accuracy": 0.9,
+  "flight_weights_unchanged": true,
+  "threshold_only": {
+    "confirmed": 5,
+    "rejected": 1,
+    "names": [
+      "pit",
+      "rock",
+      "rock",
+      "rock",
+      "rock"
+    ],
+    "distinct_positions": 5
+  },
+  "full": {
+    "confirmed": 4,
+    "rejected": 0,
+    "names": [
+      "pit",
+      "pit",
+      "rock",
+      "rock"
+    ],
+    "distinct_positions": 4
+  },
+  "without_geometric_test": {
+    "confirmed": 4,
+    "rejected": 0,
+    "names": [
+      "pit",
+      "pit",
+      "rock",
+      "rock"
+    ],
+    "distinct_positions": 4
+  },
+  "without_position_features": {
+    "val_accuracy": 0.904,
+    "path": "C:\\Users\\hsini\\OneDrive\\Bureau\\ATEC\\veil\\outputs\\hazard_net_no_position.npz",
+    "replaced_flight_weights": false
+  },
+  "position_feature_note": "The last two features are normalized pixel position. The flight network still uses them. The aside file is not loaded by the mission."
+}

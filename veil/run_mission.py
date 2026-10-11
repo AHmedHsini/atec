@@ -11,10 +11,13 @@ def main() -> None:
     parser.add_argument("--loss", type=float, default=0.3, help="packet loss while the link is up")
     parser.add_argument("--port", type=int, default=8877)
     parser.add_argument("--hold", type=float, default=-1, help="seconds to keep the dashboard up; -1 waits")
-    parser.add_argument("--source", default=None, help="PNG directory or mp4 plus a pose CSV")
+    parser.add_argument("--source", default=None, help="PNG directory or mp4. A missing pose file uses constant velocity.")
+    parser.add_argument("--speed", type=float, default=0.25, help="forward speed m/s when no pose file exists")
+    parser.add_argument("--pose-source", default="auto", choices=("auto", "constant", "vo", "file"))
+    parser.add_argument("--camera", default=None, help="camera.json override")
     parser.add_argument("--in-process", action="store_true", help="keep onboard, radio, and ground in one process")
     args = parser.parse_args()
-    source = VideoFrameSource(args.source) if args.source else None
+    source = VideoFrameSource(args.source, speed=args.speed, pose_source=args.pose_source, camera_path=args.camera) if args.source else None
     report = run(
         live=True,
         realtime=True,

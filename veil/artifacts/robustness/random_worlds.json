@@ -1,0 +1,61 @@
+{
+  "random_worlds": {
+    "worlds": 50,
+    "precision": 0.964,
+    "recall": 0.604,
+    "mean_error_m": 0.08,
+    "p95_error_m": 0.3746,
+    "false_hazards": 6,
+    "rejected_tracks": 10,
+    "tuned_on_these_seeds": false
+  },
+  "noise": {
+    "clean": {
+      "confirmed": 2,
+      "rejected": 0,
+      "classes": [
+        "pit",
+        "rock"
+      ]
+    },
+    "gaussian": {
+      "confirmed": 2,
+      "rejected": 0,
+      "classes": [
+        "pit",
+        "rock"
+      ]
+    },
+    "bright": {
+      "confirmed": 2,
+      "rejected": 0,
+      "classes": [
+        "pit",
+        "rock"
+      ]
+    },
+    "dark": {
+      "confirmed": 1,
+      "rejected": 0,
+      "classes": [
+        "pit"
+      ]
+    },
+    "jpeg": {
+      "confirmed": 2,
+      "rejected": 0,
+      "classes": [
+        "pit",
+        "rock"
+      ]
+    },
+    "blur": {
+      "confirmed": 2,
+      "rejected": 0,
+      "classes": [
+        "pit",
+        "rock"
+      ]
+    }
+  }
+}

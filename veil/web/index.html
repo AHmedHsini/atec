@@ -6,496 +6,307 @@
   <title>VEIL — Mission Control</title>
   <style>
     :root {
-      --ink: #f7f1e6;
-      --muted: #d9cbb6;
-      --glass: rgba(16, 18, 22, 0.78);
-      --line: rgba(247, 241, 230, 0.18);
-      --pit: #ff7a2f;
-      --rock: #2fd0c8;
-      --bad: #ff4d3a;
-      --ok: #d6ef6a;
+      color-scheme: dark;
+      --bg: #0E1116;
+      --panel: #151A21;
+      --line: #232A33;
+      --text: #E7ECF3;
+      --muted: #9AA6B2;
+      --accent: #3DDCFF;
+      --ok: #3DDC97;
+      --warn: #E6B35A;
+      --bad: #F07178;
+      --stale: #8B95A1;
+      --shadow: 0 8px 24px rgba(0,0,0,.28);
+      --sans: "Segoe UI", "Helvetica Neue", sans-serif;
+      --mono: Consolas, "Cascadia Mono", monospace;
+    }
+    @media (prefers-color-scheme: light) {
+      :root:not([data-theme="night"]) {
+        color-scheme: light;
+        --bg: #F4F2EE;
+        --panel: #FFFFFF;
+        --line: #D9D3C9;
+        --text: #1C2128;
+        --muted: #5C6770;
+        --accent: #0B6E8A;
+        --shadow: 0 8px 24px rgba(40,32,20,.08);
+      }
+    }
+    :root[data-theme="field"] {
+      color-scheme: light;
+      --bg: #F4F2EE;
+      --panel: #FFFFFF;
+      --line: #D9D3C9;
+      --text: #1C2128;
+      --muted: #5C6770;
+      --accent: #0B6E8A;
+      --shadow: 0 8px 24px rgba(40,32,20,.08);
+    }
+    :root[data-theme="night"] {
+      color-scheme: dark;
+      --bg: #0E1116;
+      --panel: #151A21;
+      --line: #232A33;
+      --text: #E7ECF3;
+      --muted: #9AA6B2;
+      --accent: #3DDCFF;
     }
     * { box-sizing: border-box; }
-    html, body { margin: 0; height: 100%; overflow: hidden; }
-    body {
-      color: var(--ink);
-      font: 16px/1.35 Bahnschrift, "Segoe UI", sans-serif;
-      background: #1b1914;
-    }
-    canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
-    canvas.dragging { cursor: grabbing; }
-    .hud {
-      position: fixed;
-      z-index: 2;
-      background: var(--glass);
-      border: 1px solid var(--line);
-      backdrop-filter: blur(10px);
-      border-radius: 18px;
-    }
-    .top {
-      top: 18px; left: 18px; right: 18px;
-      display: flex;
-      justify-content: space-between;
-      gap: 18px;
-      align-items: stretch;
-      padding: 16px 18px;
-    }
-    .kicker { letter-spacing: 0.18em; font-size: 12px; color: var(--muted); }
-    h1 { margin: 4px 0 6px; font-size: 30px; line-height: 1.1; font-weight: 650; }
-    .story { margin: 0; color: var(--muted); max-width: 680px; }
-    .radio {
-      min-width: 190px;
-      border-radius: 14px;
-      padding: 12px 16px;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      text-align: right;
-    }
-    .radio b { font-size: 22px; }
-    .radio span { color: var(--muted); font-size: 14px; }
-    .radio.up { background: #243018; color: var(--ok); }
-    .radio.down { background: #3a1814; color: #ffb1a6; }
-    .radio.down b, .radio.up b { color: inherit; }
-    .cam {
-      left: 18px; bottom: 18px; width: min(340px, 34vw);
-      padding: 12px;
-    }
-    .cam img { width: 100%; border-radius: 12px; display: block; background: #111; aspect-ratio: 4/3; object-fit: cover; }
-    .badge {
-      position: absolute; left: 22px; top: 22px;
-      background: var(--bad); color: white;
-      font-size: 11px; letter-spacing: 0.12em;
-      padding: 4px 7px; border-radius: 999px;
-    }
-    .cam p { margin: 8px 2px 0; color: var(--muted); font-size: 14px; }
-    .sheet {
-      right: 18px; top: 148px; bottom: 18px; width: min(320px, 36vw);
-      padding: 16px;
-      overflow: auto;
-    }
-    .sheet h2 { margin: 0 0 10px; font-size: 13px; letter-spacing: 0.14em; color: var(--muted); }
-    .hazard {
-      display: grid;
-      grid-template-columns: 42px 1fr;
-      gap: 10px;
-      padding: 10px 0;
-      border-top: 1px solid var(--line);
-    }
-    .mark {
-      width: 42px; height: 42px; border-radius: 12px;
-      display: grid; place-items: center; font-size: 12px; font-weight: 700;
-    }
-    .mark.pit { background: rgba(255, 122, 47, 0.2); color: var(--pit); }
-    .mark.rock { background: rgba(47, 208, 200, 0.18); color: var(--rock); }
-    .hazard b { display: block; font-size: 16px; }
-    .hazard span { color: var(--muted); font-size: 14px; }
-    .log { margin-top: 16px; }
-    .log li { list-style: none; padding: 8px 0; border-top: 1px solid var(--line); color: var(--muted); }
-    .log ul { margin: 0; padding: 0; }
-    .log time { display: block; color: var(--ink); font-size: 13px; }
-    .empty { color: var(--muted); }
-    .key {
-      position: fixed; z-index: 2;
-      left: 380px; bottom: 28px;
-      display: flex; gap: 16px;
-      color: #1b1914; font-size: 13px; font-weight: 650;
-    }
-    .dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; }
-    @media (max-width: 900px) {
-      .sheet { top: auto; bottom: 210px; left: 18px; right: 18px; width: auto; max-height: 34vh; }
-      .key { display: none; }
-      h1 { font-size: 22px; }
-    }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 14px/1.4 var(--sans); }
+    button, select { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; }
+    button:focus-visible, select:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .app { display: grid; grid-template-rows: auto 1fr auto; height: 100%; gap: 8px; padding: 8px; }
+    .bar, .panel, .drawer { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); }
+    .bar { display: flex; justify-content: space-between; gap: 16px; align-items: center; padding: 12px 16px; }
+    .kicker { font-size: 12px; letter-spacing: .14em; color: var(--muted); }
+    h1 { margin: 0; font-size: 20px; font-weight: 650; }
+    .sentence { margin: 4px 0 0; font-size: 14px; }
+    .badges { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .badge { display: inline-flex; gap: 6px; align-items: center; border-radius: 999px; padding: 4px 10px; border: 1px solid var(--line); font-size: 12px; }
+    .badge.ok { color: var(--ok); }
+    .badge.warn { color: var(--warn); }
+    .badge.bad { color: var(--bad); }
+    .badge.stale { color: var(--stale); }
+    .nums { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 12px; color: var(--muted); }
+    .main { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(280px, .9fr); gap: 8px; min-height: 0; }
+    .map-wrap { position: relative; min-height: 0; }
+    canvas { width: 100%; height: 100%; display: block; border-radius: 12px; background: var(--bg); }
+    .map-tools { position: absolute; left: 12px; top: 12px; display: flex; gap: 8px; }
+    .side { overflow: auto; padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+    .card h2 { margin: 0 0 8px; font-size: 12px; letter-spacing: .12em; color: var(--muted); }
+    .hazard { display: grid; grid-template-columns: 28px 1fr; gap: 8px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 8px; cursor: pointer; }
+    .hazard.selected { border-color: var(--accent); }
+    .meta { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+    .agebar { height: 4px; background: var(--line); border-radius: 4px; margin-top: 6px; }
+    .agebar span { display: block; height: 100%; background: var(--warn); }
+    .cam { border: 1px dashed var(--line); border-radius: 12px; padding: 8px; }
+    .cam img { width: 100%; display: block; background: #111; aspect-ratio: 4/3; object-fit: cover; }
+    .lock { display: inline-block; margin-bottom: 8px; background: var(--bad); color: white; font-size: 12px; letter-spacing: .06em; padding: 4px 8px; border-radius: 999px; }
+    .drawer { padding: 8px 12px; max-height: 180px; overflow: auto; }
+    .drawer pre { font-family: var(--mono); font-size: 12px; margin: 0; white-space: pre-wrap; }
+    .legend { font-size: 12px; color: var(--muted); }
+    .banner { display: none; background: var(--bad); color: white; padding: 8px 12px; border-radius: 8px; }
+    .banner.show { display: block; }
+    .help { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: none; place-items: center; }
+    .help.show { display: grid; }
+    .help div { background: var(--panel); padding: 16px; border-radius: 12px; max-width: 420px; }
+    @media (max-width: 900px) { .main { grid-template-columns: 1fr; } }
+    @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
   </style>
 </head>
 <body>
-  <canvas id="map"></canvas>
-  <header class="hud top">
-    <div>
-      <div class="kicker">DRAG THE LANDER OR THE SCOUT · DOUBLE-CLICK TO RESUME</div>
-      <h1 id="headline">Waiting for the scout.</h1>
-      <p id="story" class="story"></p>
+  <div class="app">
+    <header class="bar">
+      <div>
+        <div class="kicker">VEIL</div>
+        <h1>Mission Control</h1>
+        <p class="sentence" id="sentence">Waiting for ground state.</p>
+      </div>
+      <div class="badges">
+        <span class="badge" id="link" title="Heartbeat age. UP under 1 s, DEGRADED under 3 s, otherwise DOWN.">link</span>
+        <span class="badge" id="mode" title="Onboard watchdog. SAFE stops new hazard queues.">mode</span>
+        <span class="nums" id="stats" title="Application payload bytes. UDP/IPv4 headers are not included."></span>
+        <button id="theme" type="button">Theme</button>
+        <button id="helpbtn" type="button" aria-label="Keyboard help">?</button>
+      </div>
+    </header>
+    <p class="banner" id="banner">stale connection to ground server</p>
+    <div class="main">
+      <section class="map-wrap panel" aria-label="Landing site map">
+        <div class="map-tools">
+          <button type="button" id="zoomIn" aria-label="Zoom in">+</button>
+          <button type="button" id="zoomOut" aria-label="Zoom out">−</button>
+          <button type="button" id="fit" aria-label="Fit hazards">Fit</button>
+          <button type="button" id="recenter" aria-label="Recenter on scout">Recenter</button>
+          <button type="button" id="demo" aria-label="Demo tools">Demo tools</button>
+        </div>
+        <canvas id="map" width="1100" height="720"></canvas>
+      </section>
+      <aside class="side panel">
+        <section class="card">
+          <h2>HAZARDS</h2>
+          <label class="legend">Sort
+            <select id="sort" aria-label="Sort hazards">
+              <option value="distance">distance</option>
+              <option value="age">age</option>
+              <option value="sigma">uncertainty</option>
+            </select>
+          </label>
+          <div id="hazards"><p class="legend">No hazard packets yet.</p></div>
+          <p class="legend">Age legend: fresh under 2 s, dimmed 2–10 s, stale after 10 s. Sigma is the geometry circle. Staleness is time and is not added to sigma.</p>
+        </section>
+        <section class="card">
+          <h2>LINK</h2>
+          <p class="meta" id="linkcard">Waiting.</p>
+        </section>
+        <section class="card">
+          <h2>TELEMETRY</h2>
+          <p class="meta" id="bytes">Bytes by type appear after the first report.</p>
+        </section>
+        <section class="card cam">
+          <span class="lock">ONBOARD ONLY - NOT TRANSMITTED</span>
+          <span class="legend">STAYS ON ROVER</span>
+          <img id="camera" alt="Onboard camera preview. This image is not sent over the radio." />
+          <p class="legend">Not a live feed to Earth. The ground process receives decoded packets only. This preview is local.</p>
+          <p class="legend" id="pose"></p>
+        </section>
+      </aside>
     </div>
-    <div id="link" class="radio"><b>—</b><span id="clock"></span></div>
-  </header>
-  <section class="hud cam">
-    <span class="badge">STAYS ON ROVER</span>
-    <img id="camera" alt="Rover camera. This image is not sent to Earth." />
-    <p id="camnote">This picture is not sent to Earth. The radio only carries the dots on the map.</p>
-  </section>
-  <aside class="hud sheet">
-    <h2>ON THE MAP</h2>
-    <div id="list"></div>
-    <p id="empty" class="empty">Nothing trusted yet. A shape must be seen from two places first.</p>
-    <div class="log">
-      <h2>DRIVE LOG</h2>
-      <ul id="log"></ul>
-    </div>
-  </aside>
-  <div class="key">
-    <span><i class="dot" style="background:#f7f1e6"></i>Scout</span>
-    <span><i class="dot" style="background:#ff4d3a"></i>Guessed while radio is down</span>
-    <span><i class="dot" style="background:#2fd0c8"></i>Rock</span>
-    <span><i class="dot" style="background:#ff7a2f"></i>Pit</span>
-    <span><i class="dot" style="background:rgba(247,241,230,0.85)"></i>Camera view</span>
+    <section class="drawer" id="log">
+      <h2 class="kicker">PACKET LOG</h2>
+      <pre id="logbody">No packets yet.</pre>
+    </section>
   </div>
+  <div class="help" id="help"><div>
+    <p>Space pauses the view. + and − zoom. F fits. R recenters. T toggles theme. L toggles the log.</p>
+    <button type="button" id="closehelp">Close</button>
+  </div></div>
   <script>
     const canvas = document.getElementById("map");
     const ctx = canvas.getContext("2d");
-    const X0 = -3.1, X1 = 3.1, Y0 = -0.8, Y1 = 9.2;
-    const view = { zoom: 1, panX: 0, panY: 0 };
-    const drag = { kind: null, moved: false };
-    let latest = null;
-    let shownScout = null;
-
-    function fit() {
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      canvas.width = Math.floor(innerWidth * dpr);
-      canvas.height = Math.floor(innerHeight * dpr);
-    }
-    addEventListener("resize", () => { fit(); });
-    fit();
-
-    function layout() {
-      const padX = canvas.width * 0.28;
-      const padY = canvas.height * 0.16;
-      const w = canvas.width - padX - 48;
-      const h = canvas.height - padY - 36;
-      const scale = Math.min(w / (X1 - X0), h / (Y1 - Y0));
-      const ox = padX + (w - scale * (X1 - X0)) / 2;
-      const oy = 36 + (h - scale * (Y1 - Y0)) / 2;
-      return { scale, ox, oy };
-    }
-
-    function project(x, y) {
-      const { scale, ox, oy } = layout();
-      const px = ox + (x - X0) * scale;
-      const py = canvas.height - (oy + (y - Y0) * scale);
-      const cx = canvas.width / 2, cy = canvas.height / 2;
-      return [cx + (px - cx) * view.zoom + view.panX, cy + (py - cy) * view.zoom + view.panY, scale * view.zoom];
-    }
-
-    function unproject(sx, sy) {
-      const { scale, ox, oy } = layout();
-      const cx = canvas.width / 2, cy = canvas.height / 2;
-      const px = (sx - view.panX - cx) / view.zoom + cx;
-      const py = (sy - view.panY - cy) / view.zoom + cy;
-      return [(px - ox) / scale + X0, (canvas.height - py - oy) / scale + Y0];
-    }
-
-    function pointer(ev) {
-      const rect = canvas.getBoundingClientRect();
-      return [
-        (ev.clientX - rect.left) * (canvas.width / rect.width),
-        (ev.clientY - rect.top) * (canvas.height / rect.height),
-      ];
-    }
-
-    function near(ax, ay, bx, by, r) {
-      return Math.hypot(ax - bx, ay - by) <= r;
-    }
-
-    function postMove(body) {
-      fetch("/api/move", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-    }
-
-    function groundHit(u, v, scout, yaw) {
-      const xCam = (u - 160) / 300;
-      const yCam = (v - 120) / 300;
-      const pitch = 18 * Math.PI / 180;
-      const cp = Math.cos(pitch), sp = Math.sin(pitch);
-      const forward = [Math.sin(yaw), Math.cos(yaw), 0];
-      const right = [Math.cos(yaw), -Math.sin(yaw), 0];
-      const camForward = [cp * forward[0], cp * forward[1], -sp];
-      const camDown = [-sp * forward[0], -sp * forward[1], -cp];
-      const dir = [
-        xCam * right[0] + yCam * camDown[0] + camForward[0],
-        xCam * right[1] + yCam * camDown[1] + camForward[1],
-        yCam * camDown[2] + camForward[2],
-      ];
-      if (dir[2] >= -1e-6) return null;
-      const t = -0.55 / dir[2];
-      if (t <= 0) return null;
-      return [scout.x + t * dir[0], scout.y + t * dir[1]];
-    }
-
-    function viewFootprint(scout, yaw) {
-      const left = [];
-      const right = [];
-      for (let v = 235; v >= 28; v -= 12) {
-        const a = groundHit(2, v, scout, yaw);
-        const b = groundHit(317, v, scout, yaw);
-        if (!a || !b) break;
-        const reach = Math.max(Math.hypot(a[0] - scout.x, a[1] - scout.y), Math.hypot(b[0] - scout.x, b[1] - scout.y));
-        if (reach > 9) break;
-        left.push(a);
-        right.push(b);
-      }
-      if (left.length < 2) return [];
-      return left.concat(right.reverse());
-    }
-
-    function inside(point, polygon) {
-      let hit = false;
-      for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-        const yi = polygon[i][1], yj = polygon[j][1];
-        const xi = polygon[i][0], xj = polygon[j][0];
-        if ((yi > point[1]) !== (yj > point[1]) && point[0] < ((xj - xi) * (point[1] - yi)) / (yj - yi) + xi) hit = !hit;
-      }
-      return hit;
-    }
-
-    function explain(state) {
-      const dark = state.link === "blackout";
-      if (state.phase === "Survey") return ["Driving out from the lander.", "The scout checks each shape twice. Only then does a 20-byte note leave the rover."];
-      if (state.phase === "Blackout" && state.sim_t < 20) return ["The crater is blocking the radio.", "The scout keeps moving. The red mark is a guess, and the hazard rings widen until a message gets through."];
-      if (state.phase === "Burst") return ["The radio is open.", "Saved notes come across a few at a time. Pits closer to the path go first."];
-      if (dark) return ["Parked, and the radio dropped again.", "The hazards stay. Their rings grow until the next message."];
-      return ["Parked. This is the map Mission Control holds.", "The rocks and pits arrived. The spot stuck on the camera did not."];
-    }
-
-    function draw(state, mapOnly) {
-      const lander = state.lander || { x: 0, y: 0 };
-      const hazards = state.hazards || [];
-      if (!mapOnly) {
-      const dark = state.link === "blackout";
-      const link = document.getElementById("link");
-      link.className = "radio " + (dark ? "down" : "up");
-      link.querySelector("b").textContent = dark ? "Radio down" : "Radio up";
-      document.getElementById("clock").textContent = Number(state.sim_t || 0).toFixed(0) + " seconds";
-      const [headline, story] = explain(state);
-      document.getElementById("headline").textContent = headline;
-      document.getElementById("story").textContent = story;
-      const cam = document.getElementById("camera");
-      if (state.camera_id && cam.dataset.t !== state.camera_id) {
-        cam.dataset.t = state.camera_id;
-        cam.src = "/camera.jpg?" + state.camera_id;
-      }
-      const eye = drag.kind === "scout" && drag.pos ? drag.pos : (shownScout || state.scout);
-      const note = document.getElementById("camnote");
-      if (note && eye) {
-        const aim = groundHit(160, 120, eye, 0);
-        const ahead = aim ? Math.hypot(aim[0] - eye.x, aim[1] - eye.y) : 0;
-        const trained = state.stats && state.stats.model_accuracy
-          ? " Onboard network, " + Math.round(state.stats.model_accuracy * 100) + "% on generated views."
-          : "";
-        note.textContent = "Not a live feed to Earth. The crosshair meets the ground " + ahead.toFixed(1) + " m in front of the scout. Orange is a pit, teal is a rock." + trained;
-      }
-      document.getElementById("empty").style.display = hazards.length ? "none" : "block";
-      document.getElementById("list").innerHTML = hazards.map((h) => {
-        const dx = h.x - lander.x;
-        const dy = h.y - lander.y;
-        const side = dx > 0.15 ? dx.toFixed(1) + " m right" : dx < -0.15 ? Math.abs(dx).toFixed(1) + " m left" : "on the path";
-        return `
-        <div class="hazard">
-          <div class="mark ${h.cls}">${h.cls === "pit" ? "PIT" : "ROCK"}</div>
-          <div>
-            <b>${Math.abs(dy).toFixed(1)} m from lander</b>
-            <span>${side} · off by up to ${h.sigma.toFixed(2)} m · ${h.age_s.toFixed(0)}s old</span>
-          </div>
-        </div>`;
-      }).join("");
-      document.getElementById("log").innerHTML = (state.events || []).slice().reverse().slice(0, 5).map((event) =>
-        `<li><time>${event.t.toFixed(0)}s</time>${event.text}</li>`
-      ).join("");
-      }
-
-      const sky = ctx.createLinearGradient(0, 0, 0, canvas.height);
-      sky.addColorStop(0, "#14181f");
-      sky.addColorStop(0.22, "#243044");
-      sky.addColorStop(0.45, "#8d7356");
-      sky.addColorStop(1, "#cbb892");
-      ctx.fillStyle = sky;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      ctx.strokeStyle = "rgba(247,241,230,0.35)";
-      ctx.fillStyle = "#f7f1e6";
-      ctx.lineWidth = 1.5 * (canvas.width / 1400);
-      ctx.font = `${14 * (canvas.width / 1400)}px Bahnschrift, Segoe UI`;
-      for (let y = 0; y <= 8; y++) {
-        const a = project(-3.1, y), b = project(3.1, y);
+    const state = { data: null, selected: null, scale: 42, ox: 80, oy: 560, placed: false, pause: false, log: true, demo: false };
+    const root = document.documentElement;
+    const saved = localStorage.getItem("veil-theme");
+    if (saved) root.dataset.theme = saved;
+    document.getElementById("theme").onclick = () => {
+      const next = root.dataset.theme === "field" ? "night" : "field";
+      root.dataset.theme = next;
+      localStorage.setItem("veil-theme", next);
+    };
+    document.getElementById("helpbtn").onclick = () => document.getElementById("help").classList.add("show");
+    document.getElementById("closehelp").onclick = () => document.getElementById("help").classList.remove("show");
+    document.getElementById("zoomIn").onclick = () => { state.scale *= 1.15; draw(); };
+    document.getElementById("zoomOut").onclick = () => { state.scale /= 1.15; draw(); };
+    document.getElementById("recenter").onclick = () => { state.placed = false; layout(); };
+    document.getElementById("fit").onclick = () => { state.scale = 42; state.placed = false; layout(); };
+    document.getElementById("demo").onclick = () => { state.demo = !state.demo; };
+    document.getElementById("sort").onchange = renderList;
+    window.addEventListener("keydown", (event) => {
+      if (event.key === "+") state.scale *= 1.15;
+      if (event.key === "-") state.scale /= 1.15;
+      if (event.key === "f" || event.key === "F") document.getElementById("fit").click();
+      if (event.key === "r" || event.key === "R") document.getElementById("recenter").click();
+      if (event.key === "t" || event.key === "T") document.getElementById("theme").click();
+      if (event.key === " ") { state.pause = !state.pause; event.preventDefault(); }
+      if (event.key === "l" || event.key === "L") document.getElementById("log").hidden = state.log = !state.log;
+      if (event.key === "?") document.getElementById("help").classList.add("show");
+      draw();
+    });
+    function world(x, y) { return [state.ox + x * state.scale, state.oy - y * state.scale]; }
+    function ageKind(age) { if (age < 2) return "fresh"; if (age < 10) return "dim"; return "stale"; }
+    function draw() {
+      const d = state.data;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeStyle = getComputedStyle(root).getPropertyValue("--line");
+      for (let m = -2; m <= 10; m += 1) {
+        const a = world(m, -1), b = world(m, 10);
+        ctx.globalAlpha = m % 2 ? 0.35 : 0.8;
         ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
-        ctx.fillText(y + " m", b[0] + 8, a[1] + 4);
+        ctx.font = "12px Consolas, monospace";
+        ctx.fillStyle = getComputedStyle(root).getPropertyValue("--muted");
+        ctx.fillText(m + " m", a[0] + 2, canvas.height - 8);
       }
-
-      const origin = project(lander.x, lander.y);
-      ctx.fillStyle = "#f7f1e6";
-      ctx.beginPath();
-      ctx.moveTo(origin[0], origin[1] - 14);
-      ctx.lineTo(origin[0] + 11, origin[1] + 10);
-      ctx.lineTo(origin[0] - 11, origin[1] + 10);
-      ctx.fill();
-      ctx.fillText("lander", origin[0] + 16, origin[1] + 4);
-
-      if (!draw.trail) draw.trail = [];
-      if (state.scout && !state.scout.predicted) {
-        const last = draw.trail[draw.trail.length - 1];
-        if (!last || Math.hypot(last.x - state.scout.x, last.y - state.scout.y) > 0.08) draw.trail.push({ x: state.scout.x, y: state.scout.y });
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = getComputedStyle(root).getPropertyValue("--text");
+      ctx.fillText("N +Y", 16, 28);
+      if (!d) return;
+      const lander = world(d.lander ? d.lander.x : 0, d.lander ? d.lander.y : 0);
+      ctx.fillRect(lander[0] - 5, lander[1] - 5, 10, 10);
+      if (d.scout) {
+        const s = world(d.scout.x, d.scout.y);
+        ctx.setLineDash(d.scout.predicted ? [4, 4] : []);
+        ctx.strokeStyle = getComputedStyle(root).getPropertyValue("--accent");
+        ctx.strokeRect(s[0] - 6, s[1] - 6, 12, 12);
+        ctx.setLineDash([]);
+        if (d.scout.hold) ctx.fillText("HOLD " + d.scout.silence_s + "s", s[0] + 10, s[1]);
+        else if (d.scout.predicted) ctx.fillText("PREDICTED", s[0] + 10, s[1]);
       }
-      ctx.strokeStyle = "rgba(247,241,230,0.9)";
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      draw.trail.forEach((point, index) => {
-        const p = project(point.x, point.y);
-        if (index === 0) ctx.moveTo(p[0], p[1]); else ctx.lineTo(p[0], p[1]);
-      });
-      ctx.stroke();
-
-      const scout = drag.kind === "scout" && drag.pos ? drag.pos : (state.camera_pose || shownScout || state.scout);
-      let footprint = [];
-      if (scout) {
-        draw.yaw = 0;
-        footprint = drag.kind === "scout"
-          ? viewFootprint(scout, 0)
-          : (state.view || []).map((point) => [point.x, point.y]);
-        if (!footprint.length) footprint = viewFootprint(scout, 0);
-        if (footprint.length) {
-          ctx.beginPath();
-          footprint.forEach((point, index) => {
-            const p = project(point[0], point[1]);
-            if (index === 0) ctx.moveTo(p[0], p[1]);
-            else ctx.lineTo(p[0], p[1]);
-          });
-          ctx.closePath();
-          ctx.fillStyle = "rgba(247, 241, 230, 0.28)";
-          ctx.fill();
-          ctx.strokeStyle = "rgba(247, 241, 230, 0.95)";
-          ctx.lineWidth = 2;
-          ctx.stroke();
-          const seam = footprint.length / 2;
-          const aim = [
-            (footprint[seam - 1][0] + footprint[seam][0]) / 2,
-            (footprint[seam - 1][1] + footprint[seam][1]) / 2,
-          ];
-          const from = project(scout.x, scout.y);
-          const to = project(aim[0], aim[1]);
-          ctx.beginPath();
-          ctx.moveTo(from[0], from[1]);
-          ctx.lineTo(to[0], to[1]);
-          ctx.stroke();
-          const look = groundHit(160, 120, scout, 0);
-          if (look) {
-            const hit = project(look[0], look[1]);
-            ctx.strokeStyle = "#fff6e8";
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.arc(hit[0], hit[1], 7, 0, Math.PI * 2);
-            ctx.stroke();
-            ctx.fillStyle = "#1b1914";
-            ctx.fillText("crosshair", hit[0] + 10, hit[1] - 8);
-          }
-          ctx.fillStyle = "#1b1914";
-          ctx.fillText("camera", to[0] + 8, to[1]);
-        }
-      }
-      if (scout) {
-        const s = project(scout.x, scout.y);
-        ctx.fillStyle = scout.predicted ? "#ff4d3a" : "#f7f1e6";
+      (d.hazards || []).forEach((h) => {
+        const p = world(h.x, h.y);
+        const kind = ageKind(h.age_s || 0);
+        ctx.globalAlpha = kind === "fresh" ? 1 : kind === "dim" ? 0.65 : 0.4;
         ctx.beginPath();
-        ctx.arc(s[0], s[1], 11, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillText(scout.manual ? "scout (you)" : scout.predicted ? "guess" : "scout", s[0] + 14, s[1] - 10);
-      }
-
-      hazards.forEach((h) => {
-        const p = project(h.x, h.y);
-        const scale = p[2];
-        const seen = footprint.length && inside([h.x, h.y], footprint);
-        const color = h.cls === "pit" ? "#ff7a2f" : "#2fd0c8";
-        ctx.fillStyle = color;
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 3;
-        if (h.cls === "pit") {
-          ctx.beginPath();
-          ctx.arc(p[0], p[1], Math.max(8, h.radius * scale), 0, Math.PI * 2);
-          ctx.stroke();
-        } else {
-          ctx.save();
-          ctx.translate(p[0], p[1]);
-          ctx.rotate(Math.PI / 4);
-          ctx.fillRect(-7, -7, 14, 14);
-          ctx.restore();
-        }
-        ctx.fillStyle = "#1b1914";
-        ctx.fillText((h.cls === "pit" ? "pit" : "rock") + (seen ? " · in camera" : ""), p[0] + 14, p[1] - 8);
+        ctx.strokeStyle = getComputedStyle(root).getPropertyValue("--accent");
+        ctx.arc(p[0], p[1], Math.max(4, (h.sigma || 0.1) * state.scale), 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = h.cls === "pit" ? "#E6B35A" : "#3DDCFF";
+        if (h.cls === "pit") { ctx.beginPath(); ctx.arc(p[0], p[1], 7, 0, Math.PI * 2); ctx.stroke(); ctx.fillRect(p[0] - 1.5, p[1] - 1.5, 3, 3); }
+        else { ctx.beginPath(); ctx.moveTo(p[0], p[1] - 8); ctx.lineTo(p[0] + 7, p[1]); ctx.lineTo(p[0], p[1] + 8); ctx.lineTo(p[0] - 7, p[1]); ctx.closePath(); ctx.fill(); }
+        if (kind === "stale") ctx.fillText("clock", p[0] + 10, p[1] - 8);
+        ctx.globalAlpha = 1;
       });
     }
-
-    async function tick() {
+    function renderList() {
+      const d = state.data;
+      const host = document.getElementById("hazards");
+      if (!d || !d.hazards || !d.hazards.length) { host.innerHTML = "<p class='legend'>No hazard packets yet.</p>"; return; }
+      const key = document.getElementById("sort").value;
+      const rows = d.hazards.slice().sort((a, b) => (key === "age" ? a.age_s - b.age_s : key === "sigma" ? b.sigma - a.sigma : Math.hypot(a.x, a.y) - Math.hypot(b.x, b.y)));
+      host.innerHTML = "";
+      rows.forEach((h) => {
+        const el = document.createElement("button");
+        el.type = "button";
+        el.className = "hazard" + (state.selected === h.id ? " selected" : "");
+        const range = Math.hypot(h.x, h.y).toFixed(2);
+        const side = h.x < 0 ? "left" : "right";
+        const age = Number(h.age_s || 0);
+        el.innerHTML = "<div aria-hidden='true'>" + (h.cls === "pit" ? "○" : "◆") + "</div><div><strong>" + h.cls + " " + h.id + "</strong><div class='meta'>side " + side + " · lander " + range + " m · sigma " + h.sigma + " m · staleness " + h.staleness_m + " m · agreement " + h.agreement + "% · age " + age.toFixed(1) + " s</div><div class='agebar' title='Data age'><span style='width:" + Math.min(100, age * 8) + "%'></span></div></div>";
+        el.onclick = () => { state.selected = h.id; renderList(); draw(); };
+        host.appendChild(el);
+      });
+    }
+    function render(d) {
+      state.data = d;
+      const link = (d.link_state || "DOWN");
+      const linkEl = document.getElementById("link");
+      linkEl.textContent = "link " + link;
+      linkEl.className = "badge " + (link === "UP" ? "ok" : link === "DEGRADED" ? "warn" : "bad");
+      const modeEl = document.getElementById("mode");
+      modeEl.textContent = "mode " + (d.mode || "RUN");
+      modeEl.className = "badge " + (d.mode === "SAFE" ? "bad" : "ok");
+      const n = (d.hazards || []).length;
+      const age = d.scout ? d.scout.age_s : "—";
+      document.getElementById("sentence").textContent = n + " hazards confirmed. Last scout update " + age + " s ago. Link " + link + ".";
+      const stats = d.stats || {};
+      document.getElementById("stats").textContent = "rx " + (stats.delivered || 0) + " drop " + (stats.dropped || 0) + " bytes " + (stats.bytes_sent || 0) + " queue " + (stats.queued || 0);
+      document.getElementById("linkcard").textContent = "link " + link + " · delivered " + (stats.delivered || 0) + " · dropped " + (stats.dropped || 0);
+      document.getElementById("bytes").textContent = "hazard " + (stats.hazard_bytes || 0) + " · pose " + (stats.pose_bytes || 0) + " · heartbeat " + (stats.heartbeat_bytes || 0) + " · retries " + (stats.retransmission_bytes || 0) + " · bytes/hazard " + (stats.bytes_per_delivered_hazard || "—");
+      document.getElementById("pose").textContent = d.pose_warning || "";
+      const tail = (d.packet_tail || []).slice(-8).join("\n");
+      document.getElementById("logbody").textContent = tail || "No packets yet.";
+      renderList();
+      draw();
+    }
+    async function poll() {
+      if (state.pause) return;
       try {
-        const previousLander = drag.kind === "lander" && latest ? latest.lander : null;
-        latest = await (await fetch("/api/state", { cache: "no-store" })).json();
-        if (previousLander) latest.lander = previousLander;
-        if (drag.kind !== "lander" && drag.kind !== "scout") draw(latest);
-        if (drag.kind !== "scout" && latest.scout) {
-          if (!shownScout) shownScout = { ...latest.scout };
-          else {
-            shownScout.predicted = latest.scout.predicted;
-            shownScout.manual = latest.scout.manual;
-          }
-        }
+        const response = await fetch("/api/state", { cache: "no-store" });
+        if (!response.ok) throw new Error("bad");
+        document.getElementById("banner").classList.remove("show");
+        render(await response.json());
+        document.getElementById("camera").src = "/camera.jpg?t=" + Date.now();
       } catch (err) {
-        document.getElementById("headline").textContent = "Mission Control is not connected.";
+        document.getElementById("banner").classList.add("show");
       }
     }
-
-    function frame() {
-      if (latest && latest.scout && drag.kind !== "scout" && shownScout && !latest.manual) {
-        shownScout.x += (latest.scout.x - shownScout.x) * 0.18;
-        shownScout.y += (latest.scout.y - shownScout.y) * 0.18;
+    setInterval(poll, 400);
+    poll();
+    function layout() {
+      const width = canvas.clientWidth || 800;
+      const height = canvas.clientHeight || 520;
+      canvas.width = width;
+      canvas.height = height;
+      if (!state.placed) {
+        state.scale = Math.max(18, Math.min((width - 140) / 4, (height - 90) / 9));
+        state.ox = width * 0.42;
+        state.oy = height - 36;
       }
-      if (latest && drag.kind !== "lander" && drag.kind !== "scout") draw(latest, true);
-      requestAnimationFrame(frame);
+      draw();
     }
-
-    canvas.addEventListener("pointerdown", (ev) => {
-      if (!latest) return;
-      const [x, y] = pointer(ev);
-      const lander = latest.lander || { x: 0, y: 0 };
-      const scout = shownScout || latest.scout;
-      const lp = project(lander.x, lander.y);
-      const sp = scout ? project(scout.x, scout.y) : null;
-      drag.moved = false;
-      drag.last = [x, y];
-      if (near(x, y, lp[0], lp[1], 28)) drag.kind = "lander";
-      else if (sp && near(x, y, sp[0], sp[1], 28)) drag.kind = "scout";
-      else return;
-      canvas.classList.add("dragging");
-      try { canvas.setPointerCapture(ev.pointerId); } catch (err) { /* synthetic events */ }
-    });
-
-    canvas.addEventListener("pointermove", (ev) => {
-      if (!drag.kind) return;
-      const [x, y] = pointer(ev);
-      drag.moved = true;
-      const [wx, wy] = unproject(x, y);
-      drag.pos = { x: wx, y: wy, predicted: false, manual: drag.kind === "scout" };
-      if (drag.kind === "scout") shownScout = drag.pos;
-      if (drag.kind === "lander") latest.lander = { x: wx, y: wy };
-      draw(latest, true);
-    });
-
-    canvas.addEventListener("pointerup", () => {
-      if (drag.kind === "lander" && drag.pos) postMove({ lander: [drag.pos.x, drag.pos.y] });
-      if (drag.kind === "scout" && drag.pos) postMove({ scout: [drag.pos.x, drag.pos.y] });
-      drag.kind = null;
-      drag.pos = null;
-      canvas.classList.remove("dragging");
-    });
-
-    canvas.addEventListener("dblclick", () => {
-      postMove({ resume: true });
-      shownScout = null;
-    });
-
-    canvas.addEventListener("wheel", (ev) => {
-      ev.preventDefault();
-    }, { passive: false });
-
-    tick();
-    setInterval(tick, 250);
-    requestAnimationFrame(frame);
+    addEventListener("resize", layout);
+    if (window.ResizeObserver) new ResizeObserver(() => { if (!state.placed) layout(); }).observe(canvas.parentElement);
+    requestAnimationFrame(layout);
   </script>
 </body>
 </html>

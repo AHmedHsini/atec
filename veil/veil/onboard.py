@@ -42,6 +42,8 @@ class Onboard:
         self.pending_limit_s = 30.0
         self.max_attempts = 12
         self.max_pending = 8
+        self.superseded_drops = 0
+        self.pose_interval_s = 0.5
 
     def observe(self, image, scout: tuple[float, float], sim_t: float, frame: int, started: float) -> None:
         self.frames += 1
@@ -118,6 +120,9 @@ class Onboard:
         for slot in ready:
             if left < 20:
                 break
+            kind = slot.get("kind", "pose")
+            if kind in ("pose", "heartbeat") and self.tx_attempts.get(slot["seq"], 0) >= 1:
+                continue
             chosen.append(slot["bytes"])
             attempt = self.tx_attempts.get(slot["seq"], 0) + 1
             self.tx_attempts[slot["seq"]] = attempt
@@ -126,17 +131,27 @@ class Onboard:
         return chosen
 
     def _queue(self, scout: tuple[float, float], sim_t: float, hazards: bool) -> None:
-        if sim_t - self.last_pose_t >= 0.5:
+        self.pose_interval_s = 1.5 if len(self.pending) >= 5 else 0.5
+        if sim_t - self.last_pose_t >= self.pose_interval_s:
+            previous = self.pending.get("pose")
+            if previous is not None and self.tx_attempts.get(previous["seq"], 0) >= 1:
+                self.superseded_drops += 1
             seq = self.seq
             self.seq += 1
+            mode_flag = MODE_SAFE if self.mode == "SAFE" else MODE_RUN
+            depth = min(100, len(self.pending))
+            confirmed = len(self.tracker.confirmed())
             self.pending["pose"] = {
                 "seq": seq,
                 "kind": "pose",
                 "value": 0.01,
-                "bytes": encode(TYPE_POSE, seq, int(sim_t * 1000), 0, 0, 0, 100, scout[0], scout[1], 0.05, 0),
+                "bytes": encode(TYPE_POSE, seq, int(sim_t * 1000), confirmed, 0, mode_flag, depth, scout[0], scout[1], 0.05, 0),
             }
             self.last_pose_t = sim_t
         if sim_t - self.last_heartbeat_t >= 1.0:
+            previous = self.pending.get("heartbeat")
+            if previous is not None and self.tx_attempts.get(previous["seq"], 0) >= 1:
+                self.superseded_drops += 1
             seq = self.seq
             self.seq += 1
             depth = min(100, len(self.pending))
@@ -198,8 +213,8 @@ class Onboard:
                     track.agreement,
                     track.x,
                     track.y,
-                    track.sigma,
-                    track.radius,
+                    min(2.55, max(0.0, float(track.sigma))),
+                    min(2.55, max(0.0, float(track.radius))),
                 ),
             }
 

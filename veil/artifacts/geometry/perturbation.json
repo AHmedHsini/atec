@@ -1,0 +1,136 @@
+{
+  "perturbations": [
+    {
+      "mean_m": 0.0,
+      "p95_m": 0.0,
+      "max_m": 0.0,
+      "name": "nominal"
+    },
+    {
+      "mean_m": 0.2267,
+      "p95_m": 0.3943,
+      "max_m": 0.4177,
+      "name": "pitch+0.5"
+    },
+    {
+      "mean_m": 0.4263,
+      "p95_m": 0.733,
+      "max_m": 0.7754,
+      "name": "pitch+1"
+    },
+    {
+      "mean_m": 0.7626,
+      "p95_m": 1.2851,
+      "max_m": 1.3559,
+      "name": "pitch+2"
+    },
+    {
+      "mean_m": 0.5622,
+      "p95_m": 1.0217,
+      "max_m": 1.089,
+      "name": "pitch-1"
+    },
+    {
+      "mean_m": 0.1361,
+      "p95_m": 0.1877,
+      "max_m": 0.1938,
+      "name": "mast+2cm"
+    },
+    {
+      "mean_m": 0.3403,
+      "p95_m": 0.4691,
+      "max_m": 0.4844,
+      "name": "mast-5cm"
+    },
+    {
+      "mean_m": 0.0484,
+      "p95_m": 0.0797,
+      "max_m": 0.0841,
+      "name": "pixel 1px"
+    },
+    {
+      "mean_m": 0.0986,
+      "p95_m": 0.1646,
+      "max_m": 0.1742,
+      "name": "pixel 2px"
+    },
+    {
+      "mean_m": 0.1307,
+      "p95_m": 0.1801,
+      "max_m": 0.186,
+      "name": "heading 2deg"
+    },
+    {
+      "mean_m": 0.05,
+      "p95_m": 0.05,
+      "max_m": 0.05,
+      "name": "along 5cm"
+    },
+    {
+      "mean_m": 0.0364,
+      "p95_m": 0.0504,
+      "max_m": 0.0521,
+      "name": "principal +3px"
+    }
+  ],
+  "delivery_nominal": {
+    "delivered": 4,
+    "false": 0
+  },
+  "delivery_note": "Delivery is the unperturbed flight camera. Perturbation rows are localization error on the same four hazards, not a retuned model.",
+  "radius": {
+    "rows": [
+      {
+        "name": "rock-a",
+        "truth_r": 0.28,
+        "old_r": 0.2991,
+        "new_r": 0.28,
+        "old_err": 0.0191,
+        "new_err": 0.0
+      },
+      {
+        "name": "pit-a",
+        "truth_r": 0.42,
+        "old_r": 0.4196,
+        "new_r": 0.42,
+        "old_err": 0.0004,
+        "new_err": 0.0
+      },
+      {
+        "name": "rock-b",
+        "truth_r": 0.24,
+        "old_r": 0.2482,
+        "new_r": 0.24,
+        "old_err": 0.0082,
+        "new_err": 0.0
+      },
+      {
+        "name": "pit-b",
+        "truth_r": 0.38,
+        "old_r": 0.3886,
+        "new_r": 0.38,
+        "old_err": 0.0086,
+        "new_err": 0.0
+      }
+    ],
+    "old_mean_abs_err": 0.0091,
+    "new_mean_abs_err": 0.0,
+    "kept": "pinhole depth"
+  },
+  "tall_rock": {
+    "height_m": 0.25,
+    "bias_m": 2.3994,
+    "corrected_bias_m": 2.1754,
+    "correction_helps": true,
+    "applied_in_flight": false
+  },
+  "sigma_coverage": {
+    "coverage_within_2sigma": 1.0,
+    "median_sigma_m": {
+      "far": 0.526,
+      "mid": 0.1353,
+      "near": 0.077
+    },
+    "sigma_grows_with_distance": true
+  }
+}
