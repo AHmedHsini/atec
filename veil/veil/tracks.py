@@ -68,9 +68,14 @@ class Track:
         for index, travel in enumerate(self.travels):
             if end - travel >= BASELINE_M:
                 start_index = index
-        if end - self.travels[start_index] < BASELINE_M:
+        if BASELINE_M == 0.0:
+            if len(self.points) < 3:
+                return
+            window = np.array(self.points, dtype=float)
+        elif end - self.travels[start_index] < BASELINE_M:
             return
-        window = np.array(self.points[start_index:], dtype=float)
+        else:
+            window = np.array(self.points[start_index:], dtype=float)
         if len(window) < 3:
             return
         center = np.median(window, axis=0)

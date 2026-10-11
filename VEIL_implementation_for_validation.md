@@ -1,8 +1,21 @@
 # VEIL — implementation brief for review
 
-Upload this file together with the ATEC'26 Specification Book. The code is in the `veil` folder next to this file. This brief describes the system as of 11 October 2026, after the systems-integration pass and a separate PolarDB training run. It is a status report, not the specification.
+Upload this file together with the ATEC'26 Specification Book. The code is in the `veil` folder next to this file. This brief describes the system as of 11 October 2026, after the systems-integration pass and after the PolarDB network was wired into a photo demo. It is a status report, not the specification.
 
-Ask the reviewer to compare this implementation with the specification for project C.R.A.T.E.R. (Constrained Reconnaissance, Autonomy & Telemetry in Extreme Regions): what is required, what is flexible, what is ambiguous, and what is still missing before a preselection submission. Do not treat this file as proof by itself. The measured mission numbers below come from `veil/artifacts/acceptance/`. The PolarDB number comes from `veil/outputs/polar_train_report.json` on draft pull request https://github.com/AHmedHsini/atec/pull/1. That pull request is not merged. The flight weights on `main` are still the synthetic network.
+Ask the reviewer to compare this implementation with the specification for project C.R.A.T.E.R. (Constrained Reconnaissance, Autonomy & Telemetry in Extreme Regions): what is required, what is flexible, what is ambiguous, and what is still missing before a preselection submission. Do not treat this file as proof by itself. The synthetic mission numbers below come from `veil/artifacts/acceptance/` and were not re-run after the photo-demo wiring. The PolarDB number comes from `veil/outputs/polar_train_report.json`, now in this working tree together with `veil/outputs/hazard_net_polar.npz` and `veil/veil/polar.py`. Those files were taken from branch `cursor/polar-hazard-train-9dbc` (draft pull request https://github.com/AHmedHsini/atec/pull/1). The acceptance mission still loads the synthetic network.
+
+## Where we are
+
+Two runs exist. They do not share weights.
+
+| Run | Command | Weights | Pictures | What it is for |
+| --- | --- | --- | --- | --- |
+| Painted acceptance mission | `python run_mission.py` from `veil/`, http://127.0.0.1:8877 | `veil/outputs/hazard_net.npz` | Simulator, 320×240 | The scored pipeline: 4 known hazards, loss, blackout, 20-byte packets |
+| PolarDB photo demo | `python run_mission.py --polar --port 8878 --loss 0` | `veil/outputs/hazard_net_polar.npz` | Real NASA PolarDB frames, 1936×1216 | Show the trained network on held-out terrain photos |
+
+The photo demo was started on this machine and the dashboard at http://127.0.0.1:8878 reported PolarDB held-out accuracy **0.581** and **8** placed hazards. Those 8 are labels on one lab photo, not the four painted hazards, and they are not an acceptance pass.
+
+`python -m veil.polar_demo` fetches a few frames from the Terrain 9 zip by HTTP range. It does not download the 11.7 GB archive set. `dataset/polar/` is gitignored. The live sequence is the no-sun left camera at position A, exposure 0512, written four times so a stationary rig can agree with itself. The sun-at-180° and sun-at-270° frames from the same position are kept beside it in `dataset/polar/demo/lighting/`. They are not in the live sequence: the same rocks change class when the illumination changes, which is what the 0.581 score is warning about.
 
 ## Product
 
@@ -16,7 +29,7 @@ Fixed by the spec:
 
 - 100% software-emulated. No rover hardware.
 - Data flow: Perception, then Telemetry, then Dashboard.
-- Local perception. No cloud inference API. Cloud was used only to train a second weight file from NASA PolarDB. The live scout does not call a cloud model.
+- Local perception. No cloud inference API. A cloud job trained the PolarDB weight file. Both demos load a local npz. Neither calls a cloud model at runtime.
 - Severe bandwidth. This repo chose a fixed 20-byte message. The book does not set a byte count.
 - A pixel becomes a spatial coordinate relative to the landing site.
 - The dashboard shows data age or uncertainty.
@@ -29,7 +42,7 @@ Ambiguities, recorded rather than invented:
 - The book sets no numeric bandwidth cap, loss rate, frame-rate gate, hazard list, or blackout length. 20 bytes, 30% loss, and the blackout windows are design choices.
 - "2D pixel to 3D" is implemented as a 3D ray intersected with the flat floor z = 0. The stored fix is x, y, plus the flat distance from the scout. Object height is not estimated. A rock above the plane or a pit below it moves the hit.
 - "Video ingestion" means the pipeline reads frames. Simulated frames satisfy it. The same pipeline can also read a PNG directory or an mp4 plus a pose CSV. The radio does not carry images.
-- The book does not require NASA imagery, a field camera, or three processes. PolarDB and the process split are extra.
+- The book does not require NASA imagery, a field camera, or three processes. The PolarDB photo demo and the process split are extra. The acceptance gate is still the painted world.
 
 ## What a run does
 
@@ -47,7 +60,9 @@ Ambiguities, recorded rather than invented:
 
 The send queue holds at most 8 packets and drops the lowest value. A heartbeat is worth 0.001, a pose 0.01, a hazard more. A dropped hazard is counted once and is not put back. A hazard also leaves the queue after 12 real send attempts or after it has waited 30 s (8 s in the stress case). Pose and heartbeat drops are not counted as lost hazards.
 
-Live blackout is 4 s to 12 s. After the drive, when the radio cycle is on, the link closes for 4 s of every 14 s. Dashboard: http://127.0.0.1:8877 (`python run_mission.py`). That command starts onboard, radio, and ground as three processes. `--in-process` keeps the fast single-process path used by most tests. The live report is `veil/artifacts/live/report.json`. It does not overwrite the acceptance files.
+Live blackout on the painted mission is 4 s to 12 s. After the drive, when the radio cycle is on, the link closes for 4 s of every 14 s. Dashboard: http://127.0.0.1:8877 (`python run_mission.py`). That command starts onboard, radio, and ground as three processes. `--in-process` keeps the fast single-process path used by most tests. The live report is `veil/artifacts/live/report.json`. It does not overwrite the acceptance files.
+
+The photo demo sets `VEIL_MODEL=polar` and reads `dataset/polar/demo/`. The scout does not drive. The same photo is shown four times at one pose. Confirmation then uses a 0 m travel gate and three repeated views, because the lab camera is fixed. The painted mission still requires 0.7 m of travel. Loss on the photo command above is 0 so the first look at the dataset is not mixed with the 30% drop test.
 
 ## Architecture
 
@@ -68,7 +83,9 @@ Live blackout is 4 s to 12 s. After the drive, when the radio cycle is on, the l
 
 `pixel_to_ground` intersects the pixel ray with z = 0 and returns x, y, and the flat distance from the scout. Non-finite inputs, rays that do not point down, and points behind the camera return no hit. The image center meets the ground about 1.7 m in front of the scout. The pale map wedge is `view_polygon()`, the same rays as the picture, yaw locked to 0.
 
-This is a range measurement under a flat-floor assumption. It is not stereo, and the network does not predict distance. PolarDB's own cameras are a 30 cm stereo pair with LiDAR. That depth was used to label training patches. It is not the flight ranging method.
+This is a range measurement under a flat-floor assumption. It is not stereo, and the network does not predict distance. PolarDB's own cameras are a 30 cm stereo pair with LiDAR. That depth was used to label training patches. It is not the ranging method in either demo.
+
+On the photo demo the image stays 1936×1216. `dataset/polar/demo/camera.json` uses the rectified left-camera focal length from Terrain 9 (fx = fy ≈ 2073.6, principal point near (966, 600)) with an assumed mast height of 1.1 m and a 32° downward pitch. Those two mast numbers are not a surveyed pose of the NASA rig. The pixels and the class labels are from the dataset. The meters on the map are this flat-floor ray.
 
 A grid of ground points in front of the scout projects to pixels and back within 2 cm (`tests/test_geometry.py`).
 
@@ -104,13 +121,13 @@ Eleven held-out lens patches were called pits. Confirmation still requires geome
 
 Inference loads the npz. If the file is missing or incomplete it raises. It does not train. `tests/test_model.py` checks the feature width, empty frames, and a broken weights file.
 
-### PolarDB, trained in the cloud, not yet the flight model
+### PolarDB network, now used by the photo demo
 
-A cloud job downloaded the NASA Ames POLAR Stereo set (PolarDB) from https://ti.arc.nasa.gov/dataset/IRG_PolarDB/. The archives are about 11.7 GB: terrains 1–13, radiometric calibration, organized LiDAR range maps, and the readme. They are not in git.
+A cloud job downloaded the NASA Ames POLAR Stereo set (PolarDB) from https://ti.arc.nasa.gov/dataset/IRG_PolarDB/. The archives are about 11.7 GB: terrains 1–13, radiometric calibration, organized LiDAR range maps, and the readme. They are not in git. This checkout stores the weights, the trainer (`veil/veil/polar.py`), and the report. It stores three tone-mapped demo frames, not the archives.
 
-The images have no rock or pit labels. Labels come from LiDAR height on the rectified range maps: a local high residual is a rock, a low residual or a crater bowl is a pit, and smooth ground is none. PolarDB has no lens-smudge class, so artifact examples are synthetic dark disks. Patches use the same 262-feature recipe as the flight model.
+The images have no rock or pit labels. Labels come from LiDAR height on the rectified range maps: a local high residual is a rock, a low residual or a crater bowl is a pit, and smooth ground is none. PolarDB has no lens-smudge class, so artifact examples are synthetic dark disks. Each sample is a 64×64 window resized to 16×16, then the same six scalars as the flight model, with pixel position divided by 1936 and 1216. That is 262 inputs, matching the flight network's width, on a different crop.
 
-The cloud run wrote `veil/outputs/hazard_net_polar.npz` and `veil/outputs/polar_train_report.json` on branch `cursor/polar-hazard-train-9dbc`.
+The cloud run wrote `veil/outputs/hazard_net_polar.npz` and `veil/outputs/polar_train_report.json`.
 
 - 4,800 training patches and 960 validation patches, balanced to 1,200 and 240 per class.
 - 266 train frames, 166 validation frames. Terrains 9 and 12 are fully held out. Terrain 13 was downloaded and was not in the train or held-out lists in the report.
@@ -125,7 +142,7 @@ The cloud run wrote `veil/outputs/hazard_net_polar.npz` and `veil/outputs/polar_
 
 The artifact row is high because those patches are painted disks. Rock, pit, and none are near chance-to-moderate. This number must not be quoted as the synthetic 0.9.
 
-The simulated mission still loads `hazard_net.npz`. The PolarDB file was not swapped in, because the acceptance rule is 4 delivered hazards and 0 false hazards on the painted world. Draft pull request: https://github.com/AHmedHsini/atec/pull/1. Local `main` does not contain `veil/polar.py` until that branch is merged.
+`python run_mission.py --polar` calls `arm_polar()` and `perceive.use_polar()`. Proposals on those frames are local contrast (darker than a blur by 14, or brighter by 18), area at least 160 px, confidence at least 0.55, artifact labels dropped, and at most 8 kept. The painted mission does not take this path. It still loads `hazard_net.npz`, because the acceptance rule is 4 delivered hazards and 0 false hazards on the painted world. Swapping the 0.581 weights into that world would change the gate that already passes.
 
 ## Packet
 
@@ -231,11 +248,13 @@ Repository: https://github.com/AHmedHsini/atec (private).
 ## Still open
 
 - Pitch slides and the 7-minute talk were intentionally not built.
-- The network is not a full-image detector. Proposals are still brightness thresholds.
+- Neither network is a full-image detector. The painted mission still proposes by brightness. The photo demo proposes by local contrast, then classifies those blobs.
 - The flight held-out accuracy of 0.9 is synthetic. Eleven lens patches in that set were labeled pits. Geometry, not the class name, keeps them off the map.
-- PolarDB held-out accuracy is 0.581 on a different camera and lighting. Those weights are not the onboard file. The draft pull request is not merged.
-- Localization assumes a flat floor and a known mast. One camera does not measure object height.
+- PolarDB held-out accuracy is 0.581. The photo demo uses those weights on Terrain 9, which was held out. The class flips when the sun angle changes, so the live sequence is one lighting, repeated. The acceptance mission does not load this file.
+- The photo demo's meters use an assumed mast height and pitch on top of Terrain 9's focal length. They are not LiDAR ranges and not a surveyed rig pose.
+- Localization on both runs assumes a flat floor. One camera does not measure object height.
+- The full acceptance suite was not re-run after the photo-demo wiring. The tables above are the last synthetic run. Model, track, and geometry unit tests were run after the wiring and passed.
 - The dashboard's drag and resume path was not fully re-clicked in a browser during the hardening pass. The page text that the picture is not a downlink is asserted by a test.
 - `git_revision` in older acceptance JSON is null when git cannot name HEAD. This folder is now a git checkout.
 
-Readiness of the software pipeline: conditionally ready for a technical preselection review. The acceptance suite passes on the synthetic mission with the original weights. The pitch is separate. PolarDB is extra evidence with a lower, separately reported score, and the limits above should be stated rather than hidden.
+Readiness of the software pipeline: conditionally ready for a technical preselection review on the painted mission. The pitch is separate. The PolarDB demo is the real-photo path, with a lower score that has to stay labeled 0.581, and the limits above should be stated rather than hidden.

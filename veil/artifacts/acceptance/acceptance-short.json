@@ -1,5 +1,5 @@
 {
-  "fps": 293.9,
+  "fps": 129.8,
   "fps_method": "frames divided by time spent inside detect(), excluding radio sleep",
   "detections": 461,
   "hazards_delivered": 4,
@@ -137,6 +137,6 @@
   "frames": 140,
   "dt_s": 0.1,
   "step_m": 0.05,
-  "generated_at": "2026-10-11T01:29:27.656819+00:00",
-  "git_revision": "41a59c4"
+  "generated_at": "2026-10-11T05:22:47.108063+00:00",
+  "git_revision": "d5099c9"
 }

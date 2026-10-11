@@ -9,6 +9,20 @@ from veil.perceive import detect
 from veil.sim import render_pose
 
 
+def test_polar_weights_match_the_patch_width():
+    import os
+
+    os.environ.pop("VEIL_MODEL", None)
+    from veil.model import POLAR_WEIGHTS, load
+    from veil.polar import patch_features
+
+    net = load(POLAR_WEIGHTS)
+    sample = patch_features(np.zeros((1216, 1936), np.uint8), 400, 300)
+    assert sample.shape[0] == net.w1.shape[0]
+    assert net.samples >= 4000
+    assert 0.4 <= net.val_accuracy <= 0.8
+
+
 def test_weights_load_locally_and_match_the_feature_width():
     net = load()
     assert WEIGHTS.exists()
@@ -48,4 +62,4 @@ def test_empty_and_malformed_frames_produce_no_detections():
 def test_dashboard_does_not_pretend_the_picture_is_downlinked():
     page = Path(__file__).resolve().parents[1].joinpath("web", "index.html").read_text(encoding="utf-8")
     assert "STAYS ON ROVER" in page
-    assert "Not a live feed to Earth" in page
+    assert "Not a live feed to the lunar hub" in page

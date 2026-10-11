@@ -21,6 +21,7 @@ from veil.link import BUDGET_BYTES, OutboundLink
 from veil.mission import _exchange
 from veil.onboard import Onboard
 from veil.packet import decode
+from veil.seal import ENVELOPE_LEN, PackageChain, open_envelope
 from veil.sim import HAZARDS, render_color, scout_pose
 from veil.source import SimFrameSource, VideoFrameSource
 
@@ -44,6 +45,7 @@ def run_processes(
     pending_limit_s: float = 30.0,
     source_path: str | None = None,
     work_dir: str | None = None,
+    secure: bool = False,
 ) -> dict:
     ctx = mp.get_context("spawn")
     stop = ctx.Event()
@@ -79,6 +81,7 @@ def run_processes(
             live,
             source_path,
             str(work),
+            secure,
         ),
     )
     onboard.start()
@@ -127,7 +130,13 @@ def _wait_live(hold: float, stop, onboard, holder: dict, work: Path) -> None:
                 try:
                     incoming = json.loads(state_path.read_text(encoding="utf-8"))
                     holder["state"].update(incoming)
-                except json.JSONDecodeError:
+                except (json.JSONDecodeError, OSError):
+                    pass
+            telemetry_path = work / "telemetry.json"
+            if telemetry_path.exists():
+                try:
+                    holder["state"].update(json.loads(telemetry_path.read_text(encoding="utf-8")))
+                except (json.JSONDecodeError, OSError):
                     pass
             if jpeg_path.exists():
                 holder["jpeg"] = jpeg_path.read_bytes()
@@ -195,8 +204,8 @@ def _assemble(onboard_path, ground_path, scenario, seed, frames, dt, step_m, los
     return report
 
 
-def _onboard_main(radio_port, frames, step_m, dt, seed, blackout, pace_s, exchange_s, settle_s, pending_limit_s, onboard_path, stop, live, source_path, work) -> None:
-    link = OutboundLink(("127.0.0.1", radio_port), blackout)
+def _onboard_main(radio_port, frames, step_m, dt, seed, blackout, pace_s, exchange_s, settle_s, pending_limit_s, onboard_path, stop, live, source_path, work, secure=False) -> None:
+    link = OutboundLink(("127.0.0.1", radio_port), blackout, secure=secure)
     onboard = Onboard()
     onboard.pending_limit_s = pending_limit_s
     ground = GroundMap()
@@ -220,13 +229,15 @@ def _onboard_main(radio_port, frames, step_m, dt, seed, blackout, pace_s, exchan
             last = scout
             sim_t = float(sample["t_s"])
             if live:
-                ok, encoded = cv2.imencode(".jpg", render_color(scout, 0.0), [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+                preview = image if image.shape[:2] != (240, 320) else render_color(scout, 0.0)
+                ok, encoded = cv2.imencode(".jpg", preview, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
                 if ok:
                     (work_path / "camera.jpg").write_bytes(encoded.tobytes())
             onboard.observe(image, scout, sim_t, int(sample["frame"]), time.perf_counter())
             _exchange(link, onboard, ground, sim_t, events, exchange_s)
             _drain_acks(link, onboard)
             if live:
+                _write_telemetry(work_path / "telemetry.json", onboard, link, scout, sim_t)
                 time.sleep(max(pace_s, 0.05))
             elif pace_s > 0:
                 time.sleep(pace_s)
@@ -278,7 +289,7 @@ def _radio_main(ground_port: int, loss: float, seed: int, ports, stop) -> None:
                 continue
             except OSError:
                 break
-            if len(data) == 20:
+            if len(data) in (20, ENVELOPE_LEN):
                 onboard_addr = addr
                 if rng.random() < loss:
                     continue
@@ -297,6 +308,7 @@ def _ground_main(ports, stop, ground_path: str, state_path: str) -> None:
     sock.settimeout(0.05)
     ports.put(sock.getsockname()[1])
     ground = GroundMap()
+    chain = PackageChain()
     sim_t = 0.0
     try:
         while not stop.is_set():
@@ -306,15 +318,21 @@ def _ground_main(ports, stop, ground_path: str, state_path: str) -> None:
                 continue
             except OSError:
                 break
-            if len(data) != 20:
-                continue
-            decoded = decode(data)
+            plain = open_envelope(data)
+            sealed = plain is not None
+            if plain is None:
+                if len(data) != 20:
+                    continue
+                plain = data
+            decoded = decode(plain)
             if decoded is None:
                 continue
             sim_t = max(sim_t, decoded["t_ms"] / 1000.0)
+            if sealed:
+                chain.append(data, sim_t)
             ground.ingest([decoded], sim_t)
             sock.sendto(decoded["seq"].to_bytes(2, "little"), addr)
-            _write_state(ground, sim_t, state_path)
+            _write_state(ground, sim_t, state_path, chain)
     finally:
         rows = []
         for hazard in ground.hazards.values():
@@ -323,7 +341,43 @@ def _ground_main(ports, stop, ground_path: str, state_path: str) -> None:
         sock.close()
 
 
-def _write_state(ground: GroundMap, sim_t: float, state_path: str) -> None:
+def _write_telemetry(path: Path, onboard: Onboard, link, scout: tuple[float, float], sim_t: float) -> None:
+    from veil.camera import view_polygon
+    from veil.model import active_note, load as load_model
+
+    model = load_model()
+    tracker = onboard.tracker
+    payload = {
+        "mode": onboard.mode,
+        "sim_t": round(sim_t, 2),
+        "packet_tail": onboard.packet_log[-16:],
+        "view": view_polygon(scout, 0.0),
+        "stats": {
+            "fps": round(onboard.frames / onboard.detect_s, 1) if onboard.detect_s else 0,
+            "detections": onboard.detection_count,
+            "confirmed": len(tracker.confirmed()),
+            "rejected": len(tracker.rejected()),
+            "expired": len(tracker.expired()),
+            "queued": len(onboard.pending),
+            "bytes_sent": link.bytes_sent,
+            "naive_bytes": onboard.naive_bytes,
+            "delivered": link.delivered,
+            "dropped": link.dropped,
+            "hazard_bytes": onboard.hazard_bytes,
+            "pose_bytes": onboard.pose_bytes,
+            "heartbeat_bytes": onboard.heartbeat_bytes,
+            "retransmission_bytes": onboard.retransmission_bytes,
+            "superseded_drops": onboard.superseded_drops,
+            "bytes_per_delivered_hazard": round(onboard.hazard_bytes / max(1, len(tracker.confirmed())), 3),
+            "model_accuracy": round(model.val_accuracy, 3),
+            "model_samples": model.samples,
+            "model_note": active_note(),
+        },
+    }
+    _atomic_text(str(path), json.dumps(payload))
+
+
+def _write_state(ground: GroundMap, sim_t: float, state_path: str, chain: PackageChain | None = None) -> None:
     state = {
         "sim_t": round(sim_t, 2),
         "link_state": ground.link_state(sim_t),
@@ -331,6 +385,7 @@ def _write_state(ground: GroundMap, sim_t: float, state_path: str) -> None:
         "scout": ground.scout(sim_t, ground.link_state(sim_t) == "UP"),
         "hazards": ground.view(sim_t, ground.link_state(sim_t) == "UP"),
         "phase": "Survey",
+        "seal": chain.view() if chain is not None and chain.blocks else {"enabled": False, "height": 0, "last": "", "verified": True},
     }
     _atomic_text(state_path, json.dumps(state))
 

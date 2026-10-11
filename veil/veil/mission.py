@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -14,8 +15,8 @@ import numpy as np
 from veil.ground import GroundMap
 from veil.link import BUDGET_BYTES, LossyLink
 from veil.onboard import Onboard
-from veil.camera import view_polygon
-from veil.model import load as load_model
+from veil.camera import active_camera, view_polygon
+from veil.model import active_note, load as load_model
 from veil.reports import stamp, write_json
 from veil.sim import HAZARDS, render_color, render_pose, scout_pose
 
@@ -43,6 +44,7 @@ def run(
     pending_limit_s: float = 30.0,
     source=None,
     processes: bool = False,
+    secure: bool = False,
 ) -> dict:
     if processes:
         from veil.procs import run_processes
@@ -66,14 +68,15 @@ def run(
             write_report=write_report,
             pending_limit_s=pending_limit_s,
             source_path=source_path,
+            secure=secure,
         )
     rng = np.random.default_rng(seed)
-    link = LossyLink(loss=loss, blackout=blackout, seed=seed, cycle=realtime)
+    link = LossyLink(loss=loss, blackout=blackout, seed=seed, cycle=realtime, secure=secure)
     onboard = Onboard()
     onboard.pending_limit_s = pending_limit_s
     ground = GroundMap()
     events: list[dict] = []
-    holder = {"state": _empty_state(), "jpeg": b"", "manual": {"lander": [0.0, 0.0], "scout": None}}
+    holder = {"state": _empty_state(), "jpeg": b"", "manual": {"lander": [0.0, 0.0], "scout": None}, "source": source}
     server = _serve(holder, port) if live else None
     OUTPUTS.mkdir(exist_ok=True)
     if live:
@@ -92,6 +95,7 @@ def run(
         last_sim_t = 0.0
         frame_iter = None if source is None else iter(source.frames())
         while True:
+            yaw = 0.0
             placed = holder["manual"]["scout"]
             if placed:
                 sim_t = frame * dt
@@ -113,15 +117,16 @@ def run(
                 frame = int(sample["frame"])
                 sim_t = float(sample["t_s"])
                 scout = (float(sample["x_m"]), float(sample["y_m"]))
+                yaw = float(sample.get("yaw_rad", 0.0))
                 image = sample["image"]
                 advance = True
             last_sim_t = sim_t
             if frame == 20:
                 cv2.imwrite(str(OUTPUTS / "frame_20.png"), image)
             if live:
-                _set_camera(holder, scout, image)
+                _set_camera(holder, scout, image, yaw)
             started = time.perf_counter()
-            onboard.observe(image, scout, sim_t, frame, started)
+            onboard.observe(image, scout, sim_t, frame, started, yaw)
             _exchange(link, onboard, ground, sim_t, events, exchange_s)
             open_now = link.is_open(sim_t)
             if link_was_open and not open_now:
@@ -209,8 +214,16 @@ def run(
             server.shutdown()
 
 
-def _set_camera(holder: dict, pose: tuple[float, float], image=None) -> None:
-    del image
+def _set_camera(holder: dict, pose: tuple[float, float], image=None, yaw: float = 0.0) -> None:
+    if isinstance(image, np.ndarray) and image.shape[:2] != (240, 320):
+        ok, encoded = cv2.imencode(".jpg", image, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+        if not ok:
+            return
+        holder["jpeg"] = encoded.tobytes()
+        holder["camera_id"] = f"photo_{pose[0]:.2f}_{pose[1]:.2f}_{image.shape[1]}_{yaw:.2f}"
+        holder["camera_pose"] = {"x": pose[0], "y": pose[1], "yaw": float(yaw)}
+        holder["view"] = view_polygon(pose, yaw)
+        return
     camera_id = f"{pose[0]:.2f}_{pose[1]:.2f}"
     if holder.get("camera_id") == camera_id and holder.get("jpeg"):
         return
@@ -274,10 +287,13 @@ def _hold(hold, onboard, link, ground, holder, events, blackout, parked, sim_t) 
             was_open = link.is_open(sim_t - 0.2)
             placed = holder["manual"]["scout"]
             pose = (float(placed[0]), float(placed[1])) if placed else parked
-            image = render_pose(pose, np.random.default_rng(0))
-            _set_camera(holder, pose, image)
-            if placed:
-                onboard.observe(image, pose, sim_t, 0, time.perf_counter())
+            if os.environ.get("VEIL_MODEL") == "polar" and holder.get("jpeg"):
+                pass
+            else:
+                image = render_pose(pose, np.random.default_rng(0))
+                _set_camera(holder, pose, image)
+                if placed:
+                    onboard.observe(image, pose, sim_t, 0, time.perf_counter())
             onboard.heartbeat(pose, sim_t)
             _exchange(link, onboard, ground, sim_t, events)
             _note_link(events, sim_t, link.is_open(sim_t), was_open)
@@ -415,6 +431,44 @@ def _empty_state() -> dict:
     }
 
 
+def _camera_state() -> dict:
+    spec = active_camera()
+    return {
+        "width": spec.width,
+        "height": spec.height,
+        "fx": spec.fx,
+        "fy": spec.fy,
+        "cx": spec.cx,
+        "cy": spec.cy,
+        "mast_height_m": spec.mast_height_m,
+        "pitch_deg": spec.pitch_deg,
+        "pov": spec.pov,
+    }
+
+
+def _shown_hazards(holder, ground, onboard: Onboard, sim_t: float, link_open: bool) -> list[dict]:
+    source = holder.get("source")
+    if source is not None and hasattr(source, "yaw_deg") and onboard.last_detections:
+        rows = []
+        for index, det in enumerate(onboard.last_detections, start=1):
+            rows.append(
+                {
+                    "id": index,
+                    "cls": det["cls"],
+                    "x": float(det["x"]),
+                    "y": float(det["y"]),
+                    "u": float(det["u"]),
+                    "v": float(det["v"]),
+                    "sigma": round(float(det["sigma"]), 2),
+                    "agreement": int(round(float(det.get("confidence", 0.0)) * 100)),
+                    "age_s": 0.2,
+                    "staleness_m": 0.0,
+                }
+            )
+        return rows
+    return ground.view(sim_t, link_open)
+
+
 def _publish(holder, ground, link, onboard: Onboard, sim_t, events, blackout, driving: bool, report=None) -> None:
     tracker = onboard.tracker
     link_open = link.is_open(sim_t)
@@ -440,15 +494,21 @@ def _publish(holder, ground, link, onboard: Onboard, sim_t, events, blackout, dr
         "manual": bool(manual.get("scout")),
         "camera_id": holder.get("camera_id") or "",
         "camera_pose": holder.get("camera_pose"),
+        "camera": _camera_state(),
         "view": holder.get("view") or [],
         "lander": {"x": float(manual["lander"][0]), "y": float(manual["lander"][1])},
         "scout": scout_view,
-        "hazards": ground.view(sim_t, link_open),
+        "hazards": _shown_hazards(holder, ground, onboard, sim_t, link_open),
+        "panorama": holder.get("source") is not None and hasattr(holder.get("source"), "yaw_deg"),
+        "yaw_deg": round(float(getattr(holder.get("source"), "yaw_deg", 0.0)), 1),
+        "seal": link.chain.view() if getattr(link, "secure", False) else {"enabled": False, "height": 0, "last": "", "verified": True},
         "events": list(events),
         "stats": {
             "fps": round(onboard.frames / onboard.detect_s, 1) if onboard.detect_s else 0,
             "detections": onboard.detection_count,
             "confirmed": len(tracker.confirmed()),
+            "rejected": len(tracker.rejected()),
+            "expired": len(tracker.expired()),
             "withheld": sum(1 for track in tracker.tracks if not track.confirmed and len(track.points) >= 5),
             "queued": len(onboard.pending),
             "bytes_sent": link.bytes_sent,
@@ -464,7 +524,7 @@ def _publish(holder, ground, link, onboard: Onboard, sim_t, events, blackout, dr
             "ack_bytes": link.acks * 2,
             "bytes_per_delivered_hazard": round(onboard.hazard_bytes / max(1, len(ground.hazards)), 3),
             "model_accuracy": round(load_model().val_accuracy, 3),
-            "model_note": "Synthetic held-out accuracy. Not the PolarDB score.",
+            "model_note": active_note(),
             "model_samples": load_model().samples,
         },
         "report": report if report is not None else previous,
@@ -475,12 +535,18 @@ def _publish(holder, ground, link, onboard: Onboard, sim_t, events, blackout, dr
 def _serve(holder: dict, port: int) -> ThreadingHTTPServer:
     class Handler(BaseHTTPRequestHandler):
         def do_POST(self):
+            length = int(self.headers.get("Content-Length", "0"))
+            payload = json.loads(self.rfile.read(length) or b"{}")
+            if self.path.startswith("/api/look"):
+                look = holder.get("source")
+                if look is not None and hasattr(look, "yaw_deg"):
+                    look.yaw_deg = float(payload.get("yaw_deg", 0.0)) % 360.0
+                self._send(b"{}", "application/json")
+                return
             if not self.path.startswith("/api/move"):
                 self.send_response(404)
                 self.end_headers()
                 return
-            length = int(self.headers.get("Content-Length", "0"))
-            payload = json.loads(self.rfile.read(length) or b"{}")
             manual = holder["manual"]
             if payload.get("resume"):
                 manual["scout"] = None

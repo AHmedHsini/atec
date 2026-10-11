@@ -32,21 +32,47 @@ class HazardNet:
         return NAMES[index], float(probs[index])
 
 
-def load() -> HazardNet:
+POLAR_WEIGHTS = Path(__file__).resolve().parents[1] / "outputs" / "hazard_net_polar.npz"
+
+
+def load(path: Path | None = None) -> HazardNet:
     global _cached
-    if _cached is not None:
+    if path is None and _cached is not None:
         return _cached
-    if not WEIGHTS.exists():
-        raise FileNotFoundError(f"missing onboard weights: {WEIGHTS}. Run python -m veil.train")
-    blob = np.load(WEIGHTS)
+    chosen = WEIGHTS if path is None else Path(path)
+    if not chosen.exists():
+        raise FileNotFoundError(f"missing onboard weights: {chosen}. Run python -m veil.train")
+    blob = np.load(chosen)
     required = ("w1", "b1", "w2", "b2", "mean", "std", "val_accuracy", "samples")
     if any(key not in blob.files for key in required):
         raise ValueError("hazard_net.npz is missing required arrays")
     weights = {key: blob[key] for key in blob.files}
     if weights["w1"].ndim != 2 or weights["w2"].shape[0] != weights["w1"].shape[1]:
         raise ValueError("hazard_net.npz has inconsistent layer shapes")
-    _cached = HazardNet(weights)
-    return _cached
+    net = HazardNet(weights)
+    if path is None:
+        _cached = net
+    return net
+
+
+def arm_polar() -> HazardNet:
+    """Serve the PolarDB weights. The painted mission still reads hazard_net.npz."""
+    global _cached
+    if not POLAR_WEIGHTS.exists():
+        raise FileNotFoundError(f"missing PolarDB weights: {POLAR_WEIGHTS}")
+    net = load(POLAR_WEIGHTS)
+    _cached = net
+    import veil.tracks as tracks
+
+    tracks.BASELINE_M = 0.0
+    return net
+
+
+def active_note() -> str:
+    net = load()
+    if int(net.samples) >= 4000:
+        return "PolarDB held-out accuracy. Terrains 9 and 12 were not used for training."
+    return "Synthetic held-out accuracy. Not the PolarDB score."
 
 
 def train(save: bool = True, seed: int = 7) -> HazardNet:

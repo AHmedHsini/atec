@@ -15,6 +15,12 @@ from veil.tracks import Tracker
 
 class Onboard:
     def __init__(self):
+        import os
+
+        if os.environ.get("VEIL_MODEL") == "polar":
+            from veil.perceive import use_polar
+
+            use_polar()
         self.tracker = Tracker()
         self.pending: dict[str, dict] = {}
         self.finished: set[str] = set()
@@ -37,6 +43,7 @@ class Onboard:
         self.float32_confirmed_bytes = 0
         self.packet_log: list[str] = []
         self.mode = "RUN"
+        self.last_detections: list[dict] = []
         self.last_observe_t = 0.0
         self.confirmed_sent = 0
         self.pending_limit_s = 30.0
@@ -45,9 +52,10 @@ class Onboard:
         self.superseded_drops = 0
         self.pose_interval_s = 0.5
 
-    def observe(self, image, scout: tuple[float, float], sim_t: float, frame: int, started: float) -> None:
+    def observe(self, image, scout: tuple[float, float], sim_t: float, frame: int, started: float, yaw: float = 0.0) -> None:
         self.frames += 1
-        detections = detect(image, scout)
+        detections = detect(image, scout, yaw)
+        self.last_detections = detections
         self.detect_s += time.perf_counter() - started
         self.detection_count += len(detections)
         for detection in detections:
@@ -198,12 +206,8 @@ class Onboard:
             distance = max(0.4, float(np.hypot(track.x - scout[0], track.y - scout[1])))
             severity = 2.0 if track.cls == "pit" else 1.0
             cls = CLASS_PIT if track.cls == "pit" else CLASS_ROCK
-            self.pending[key] = {
-                "seq": seq,
-                "kind": "hazard",
-                "track_id": track.track_id,
-                "value": severity * (0.15 + track.sigma) / distance,
-                "bytes": encode(
+            try:
+                packet = encode(
                     TYPE_HAZARD,
                     seq,
                     int(sim_t * 1000),
@@ -215,7 +219,22 @@ class Onboard:
                     track.y,
                     min(2.55, max(0.0, float(track.sigma))),
                     min(2.55, max(0.0, float(track.radius))),
-                ),
+                )
+            except ValueError:
+                if slot is None:
+                    self.seq -= 1
+                    self.hazard_seqs.discard(seq)
+                    self.queued_at.pop(seq, None)
+                    self.float32_confirmed_bytes -= 20
+                    self.confirmed_sent -= 1
+                self.finished.add(key)
+                continue
+            self.pending[key] = {
+                "seq": seq,
+                "kind": "hazard",
+                "track_id": track.track_id,
+                "value": severity * (0.15 + track.sigma) / distance,
+                "bytes": packet,
             }
 
     def _trim(self) -> None:

@@ -56,6 +56,12 @@ class VideoFrameSource(FrameSource):
         self.speed = float(speed)
         self.pose_source = pose_source
         self.camera_path = camera_path
+        import os
+
+        if camera_path is None and os.environ.get("VEIL_MODEL") == "polar" and self.path.is_dir():
+            sibling = self.path / "camera.json"
+            if sibling.exists():
+                camera_path = str(sibling)
         self.camera = use_camera(load_camera(camera_path))
         self._capture = None
         self.bad_frames = 0
@@ -185,7 +191,10 @@ class VideoFrameSource(FrameSource):
         if image.shape[1] != self.camera.width or image.shape[0] != self.camera.height:
             self.camera = self.camera.scaled_to(int(image.shape[1]), int(image.shape[0]))
         fitted = image
-        if fitted.shape[1] != WIDTH or fitted.shape[0] != HEIGHT:
+        import os
+
+        keep_native = os.environ.get("VEIL_MODEL") == "polar"
+        if not keep_native and (fitted.shape[1] != WIDTH or fitted.shape[0] != HEIGHT):
             self.camera = self.camera.scaled_to(WIDTH, HEIGHT)
             fitted = cv2.resize(fitted, (WIDTH, HEIGHT), interpolation=cv2.INTER_AREA)
         use_camera(self.camera)

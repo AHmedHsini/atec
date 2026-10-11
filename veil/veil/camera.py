@@ -37,6 +37,7 @@ class CameraSpec:
         mast_height_m: float = CAM_H,
         pitch_deg: float = 18.0,
         distortion: list | None = None,
+        pov: str = "overhead",
     ):
         self.width = int(width)
         self.height = int(height)
@@ -47,6 +48,7 @@ class CameraSpec:
         self.mast_height_m = float(mast_height_m)
         self.pitch_deg = float(pitch_deg)
         self.distortion = list(distortion or [])
+        self.pov = str(pov or "overhead")
 
     def scaled_to(self, width: int, height: int) -> "CameraSpec":
         if width <= 0 or height <= 0 or self.width <= 0 or self.height <= 0:
@@ -63,6 +65,7 @@ class CameraSpec:
             self.mast_height_m,
             self.pitch_deg,
             self.distortion,
+            self.pov,
         )
 
 
@@ -86,6 +89,7 @@ def load_camera(path: str | None = None) -> CameraSpec:
         "mast_height_m": spec.mast_height_m,
         "pitch_deg": spec.pitch_deg,
         "distortion": spec.distortion,
+        "pov": spec.pov,
     }
     known.update({key: raw[key] for key in known if key in raw})
     return CameraSpec(**known)
@@ -230,16 +234,17 @@ def radius_m(distance_m: float, radius_px: float, depth_m: float, fx: float | No
 
 def view_polygon(scout_xy: tuple[float, float], yaw: float = 0.0, max_range: float = 8.0):
     """Ground patch the camera actually sees, same rays as the picture."""
+    spec = active_camera()
     far_v = 30
-    for row in range(HEIGHT - 2, 25, -3):
-        hit = pixel_to_ground(CX, row, scout_xy, yaw)
+    for row in range(spec.height - 2, 25, -3):
+        hit = pixel_to_ground(spec.cx, row, scout_xy, yaw)
         if hit and hit[2] >= max_range:
             far_v = row
             break
     corners = (
-        pixel_to_ground(1, HEIGHT - 2, scout_xy, yaw),
-        pixel_to_ground(WIDTH - 2, HEIGHT - 2, scout_xy, yaw),
-        pixel_to_ground(WIDTH - 2, far_v, scout_xy, yaw),
+        pixel_to_ground(1, spec.height - 2, scout_xy, yaw),
+        pixel_to_ground(spec.width - 2, spec.height - 2, scout_xy, yaw),
+        pixel_to_ground(spec.width - 2, far_v, scout_xy, yaw),
         pixel_to_ground(1, far_v, scout_xy, yaw),
     )
     if any(point is None for point in corners):
