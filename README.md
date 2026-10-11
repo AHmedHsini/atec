@@ -75,6 +75,8 @@ sequenceDiagram
 | 20-byte hazard, pose, and heartbeat packets with CRC and sealing | Several scouts, each with its own ID, feeding the same hub |
 | Odometry pose, predicted-then-held position during blackouts | Merging repeat sightings from different scouts into one hazard |
 | Shared hub map with age, sigma, and staleness, plus a hash chain | Sharing the map with crewed and cargo missions |
+| Rock and pit classes in a one-byte class field | Object detection to find lost scouts and failed missions, so the hub can plan recovery |
+| Camera-only perception | Ice detection with a spectrometer, sent as a new class in the same 20-byte packet |
 
 ---
 
