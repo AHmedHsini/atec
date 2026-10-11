@@ -2,6 +2,8 @@
 
 **ATEC'26 · Constrained Reconnaissance, Autonomy & Telemetry in Extreme Regions**
 
+**[Live demo: veil-mission-control.onrender.com](https://veil-mission-control.onrender.com)**: turn the camera around the Apollo 11 landing site by dragging the photo or pressing ← →. On the free plan, the first visit after a quiet period takes about a minute to wake the server.
+
 VEIL is a fully software-emulated lunar scout. It looks at the Moon through an onboard camera, finds rocks and pits with a small AI model running on the rover, turns each detection into meters on the ground, packs it into a **20-byte** radio packet, seals it, and sends it over a lossy link to the **lunar hub station**. The hub builds one shared hazard map for every scout and shows it on a live Mission Control dashboard.
 
 The camera picture never leaves the rover. Only the 20-byte packets travel.
@@ -192,6 +194,17 @@ Other modes:
 | `python run_mission.py --source path/to/frames_or.mp4` | Your own video or PNG folder |
 | `python run_mission.py --loss 0.5` | Harsher radio |
 | `python -m veil.ingest video.mp4` | Play a clip with no pose file |
+
+### Hosted demo
+
+The [live demo](https://veil-mission-control.onrender.com) runs this same code in Docker on Render's free plan. [`render.yaml`](render.yaml) builds [`deploy/huggingface/Dockerfile`](deploy/huggingface/Dockerfile), which starts the panorama mode with `--host 0.0.0.0`. Every push to `main` redeploys it. To run the same container locally:
+
+```bash
+docker build -f deploy/huggingface/Dockerfile -t veil-demo .
+docker run -p 7860:7860 veil-demo
+```
+
+All visitors share one mission, so turning the camera turns it for everyone watching.
 
 ### Tests and acceptance
 
