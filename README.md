@@ -18,6 +18,64 @@ The camera picture never leaves the rover. Only the 20-byte packets travel.
 
 ---
 
+## User story: mapping the Moon one packet at a time
+
+> **As** the lunar hub station operator,
+> **I want** every scout to report hazards and its position in a few bytes,
+> **so that** we build one trusted hazard map of the region and plan safer routes for the next mapping drives, crewed traverses, and cargo landings.
+
+### The scenario
+
+**1 · Departure.** A scout rolls out from the lunar hub near the south pole to map a crater rim no rover has driven yet. The hub's landing site is the origin of the shared map: every position is an x, y distance in meters from it.
+
+**2 · Knowing where it is.** The Moon has no GPS. The scout keeps its own position by dead reckoning: it counts how far it has driven and in which direction, like a car's odometer with a compass. In VEIL that position comes from the drive plan in the simulator, from a pose file for recorded video, or from visual odometry (optical flow between frames) when there is nothing else. Every few frames the scout sends a **20-byte pose packet** with its x, y in centimeters. Once per second it sends a **heartbeat** that says “I'm alive, in RUN or SAFE mode.” The hub draws the scout's trail from these packets.
+
+**3 · Finding a hazard.** On the rim, the camera sees a dark hollow. The onboard model says **pit**. The scout waits for a second view from a new spot; when both views put the pit in the same place, it is confirmed. A smudge on the lens would slide between views and get rejected instead. The camera math turns the pixel into meters on the ground, the scout packs class, x, y, size, and uncertainty into **20 bytes**, seals it, and sends it. The photo itself stays on the scout.
+
+**4 · Losing contact.** The scout drives behind a ridge and the link drops. The scout keeps working:
+- New hazards wait in a bounded queue, with hazards ahead of routine pose updates.
+- Old pose updates are replaced by the newest one, so no bandwidth goes to stale positions.
+
+The hub stays honest about what it knows:
+- **Link state:** UP while heartbeats arrive within 1 s, DEGRADED up to 3 s, then DOWN, with the banner “Lost contact with the lunar hub. Retrying…”
+- **Scout position:** for the first 1.2 s of silence the hub projects the scout forward along its last speed and heading, marked as *predicted*. After that it **holds** the last known position and shows how many seconds it has been silent.
+- **Hazards:** every mark keeps its own age and uncertainty circle, so the operator sees how fresh each one is.
+
+**5 · Reconnecting.** The scout clears the ridge. Waiting hazards go out first and are retried until delivered. Sequence numbers let the hub drop duplicates and late copies, so a newer fix is never overwritten by an older one. Every accepted packet is appended to the hub's hash chain, so the map's history can be audited.
+
+**6 · Using the map.** The hub now holds a growing map of rocks and pits, each with position, size, uncertainty, and age. This is the input future missions plan against: the next scout routes around known pits, a crewed rover picks a safe traverse, and a lander team checks a touchdown zone.
+
+```mermaid
+sequenceDiagram
+    participant S as Scout (onboard)
+    participant R as Radio link
+    participant H as Lunar hub
+    S->>R: pose 20 B (x, y from odometry)
+    R->>H: pose → trail on map
+    S->>R: heartbeat 20 B every 1 s
+    R->>H: link UP
+    Note over S: camera sees a pit, second view confirms it
+    S->>R: hazard 20 B (pit, x, y, size, sigma)
+    R->>H: hazard → shared map + hash chain
+    Note over R: ridge blocks the signal
+    S--xR: packets wait in the onboard queue
+    Note over H: 1.2 s predicted, then hold last position
+    Note over R: link returns
+    S->>R: queued hazards retried first
+    R->>H: duplicates dropped by sequence number
+```
+
+### Built today and next steps
+
+| Built and tested in VEIL | Next step this map enables |
+|---|---|
+| Hazard detection, two-view confirmation, lens-artifact rejection | Route planner that avoids mapped pits and rocks |
+| 20-byte hazard, pose, and heartbeat packets with CRC and sealing | Several scouts, each with its own ID, feeding the same hub |
+| Odometry pose, predicted-then-held position during blackouts | Merging repeat sightings from different scouts into one hazard |
+| Shared hub map with age, sigma, and staleness, plus a hash chain | Sharing the map with crewed and cargo missions |
+
+---
+
 ## Architecture
 
 ```mermaid
