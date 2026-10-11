@@ -10,7 +10,8 @@ from veil.source import VideoFrameSource
 def main() -> None:
     parser = argparse.ArgumentParser(description="ATEC'26 VEIL mission")
     parser.add_argument("--loss", type=float, default=0.3, help="packet loss while the link is up")
-    parser.add_argument("--port", type=int, default=8877)
+    parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8877)))
+    parser.add_argument("--host", default="127.0.0.1", help="dashboard address; 0.0.0.0 for a hosted demo")
     parser.add_argument("--hold", type=float, default=-1, help="seconds to keep the dashboard up; -1 waits")
     parser.add_argument("--source", default=None, help="PNG directory or mp4. A missing pose file uses constant velocity.")
     parser.add_argument("--speed", type=float, default=0.25, help="forward speed m/s when no pose file exists")
@@ -20,6 +21,7 @@ def main() -> None:
     parser.add_argument("--polar", action="store_true", help="use the PolarDB network and dataset/polar/demo photos")
     parser.add_argument("--in-process", action="store_true", help="keep onboard, radio, and ground in one process")
     args = parser.parse_args()
+    os.environ["VEIL_HOST"] = args.host
     source = None
     blackout = (4.0, 12.0)
     if args.panorama:

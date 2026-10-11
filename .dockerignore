@@ -1,0 +1,12 @@
+.git
+**/__pycache__
+**/.pytest_cache
+**/.venv
+dataset/polar
+dataset/surface
+crater
+output
+tests
+veil/tests
+veil/artifacts
+veil/docs

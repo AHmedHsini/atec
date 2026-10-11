@@ -22,6 +22,7 @@ from veil.sim import HAZARDS, render_color, render_pose, scout_pose
 
 ROOT = Path(__file__).resolve().parents[1]
 WEB = ROOT / "web" / "index.html"
+SURFACE = ROOT / "web" / "lro-surface.jpg"
 OUTPUTS = ROOT / "outputs"
 
 
@@ -567,6 +568,9 @@ def _serve(holder: dict, port: int) -> ThreadingHTTPServer:
             if self.path in ("/", "/index.html"):
                 self._send(WEB.read_bytes(), "text/html; charset=utf-8")
                 return
+            if self.path.startswith("/lro-surface.jpg"):
+                self._send(SURFACE.read_bytes(), "image/jpeg")
+                return
             self.send_response(404)
             self.end_headers()
 
@@ -584,6 +588,6 @@ def _serve(holder: dict, port: int) -> ThreadingHTTPServer:
     class BoundServer(ThreadingHTTPServer):
         allow_reuse_address = False
 
-    server = BoundServer(("127.0.0.1", port), Handler)
+    server = BoundServer((os.environ.get("VEIL_HOST", "127.0.0.1"), port), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server

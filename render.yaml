@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: veil-mission-control
+    runtime: docker
+    plan: free
+    dockerfilePath: ./deploy/huggingface/Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/state
+    autoDeploy: true
